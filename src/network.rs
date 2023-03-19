@@ -1,6 +1,8 @@
 pub use crate::connection::*;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use log::{info, debug};
+use simple_logger::SimpleLogger;
 
 #[derive(PartialEq, Debug)]
 struct Network {
@@ -15,7 +17,7 @@ struct Network {
 
 impl Network {
     pub fn from_bitstring(s: &str, input_count: usize, output_count: usize, nand_count_bits: usize, nor_count_bits: usize) -> Option<Network> {
-        println!("Decoding network from bitstring");
+        debug!("Decoding network from bitstring: {}", s);
 
         //Number of bits in whole string not bigger than the sum of sizes of the attributes
         if s.chars().count() <= (nand_count_bits + nor_count_bits) as usize {
@@ -40,7 +42,7 @@ impl Network {
         let connection_index_bits_count = *[input_count, output_count, nand_count, nor_count].map(|cnt| get_required_bits_count(cnt)).iter().max().unwrap();
         let connection_bits_count = 4 + (2 * connection_index_bits_count);
 
-        println!("Connection bit size: {}", connection_bits_count);
+        debug!("Connection bit size: {}", connection_bits_count);
 
         let connections_binary = &s[nor_count_end_index..];
 
@@ -57,8 +59,6 @@ impl Network {
             }
         }
 
-        //TODO: Clean connection - remove unused ones and where input is saturated already
-
         Some(
             Network {
                 input_count,
@@ -71,10 +71,14 @@ impl Network {
     }
 
     fn clean_connections(&mut self) {
+        debug!("Cleaning up connections. Starting count: {}", &self.connections.len());
+
         let mut input_counts: HashMap<&(OutputConnectionType, usize), usize> = HashMap::new();
         let mut connections_after_cleanup: Vec<Connection> = Vec::new();
 
+        //Remove connections where output is already saturated
         for conn in &self.connections {
+            debug!("Processing conn: {}", conn);
             let output = &conn.output;
             let max_inputs = match output.0 {
                 OutputConnectionType::Output => 1,
@@ -98,6 +102,11 @@ impl Network {
 
         connections_after_cleanup.dedup();
 
+        debug!("Connections after cleanup count: {}", connections_after_cleanup.len());
+
+        //TODO: Remove connections/nodes which aren't saturated (e.g. 1 input NAND, 0 input output)
+        //TODO: Leave only connections which lead to output
+
         self.connections = connections_after_cleanup;
     }
 }
@@ -108,10 +117,20 @@ fn get_required_bits_count(num: usize) -> usize {
 
 #[cfg(test)]
 mod network_tests {
+    use std::sync::Once;
     use super::*;
+
+    static INIT: Once = Once::new();
+
+    fn setup() {
+        INIT.call_once(|| {
+            SimpleLogger::new().init().unwrap();
+        });
+    }
 
     #[test]
     fn get_required_bits_count_test() {
+        setup();
         assert_eq!(get_required_bits_count(8), 3);
         assert_eq!(get_required_bits_count(12), 4);
         assert_eq!(get_required_bits_count(2), 1);
@@ -120,6 +139,7 @@ mod network_tests {
 
     #[test]
     fn from_bitstring_test() {
+        setup();
         let input_count = 7; //3 bits
         let output_count = 6; // 3 bits
         let nand_count = 12; //4 bits
@@ -178,6 +198,8 @@ mod network_tests {
 
     #[test]
     fn clean_connections_test() {
+        setup();
+
         let input_count = 5;
         let output_count = 15;
         let nand_count = 20;

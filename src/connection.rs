@@ -1,4 +1,6 @@
-#[derive(PartialEq, Debug, Clone)]
+use std::fmt;
+
+#[derive(Hash, PartialEq, Eq, Debug, Clone)]
 pub struct Connection {
     pub input: (InputConnectionType, usize),
     pub output: (OutputConnectionType, usize)
@@ -63,6 +65,12 @@ impl Connection {
                 output: (output_type, output_index)
             }
         )
+    }
+}
+
+impl fmt::Display for Connection {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "[{:?}:{}] -> [{:?}:{}]", self.input.0, self.input.1, self.output.0, self.output.1)
     }
 }
 
