@@ -1,11 +1,11 @@
 #[derive(PartialEq, Debug)]
 pub struct Connection {
-    input: (InputConnectionType, usize),
-    output: (OutputConnectionType, usize)
+    pub input: (InputConnectionType, usize),
+    pub output: (OutputConnectionType, usize)
 }
 
 impl Connection {
-    pub(crate) fn from_bitstring(s: &str, input_count: usize, output_count: usize, nand_count: usize, nor_count: usize) -> Option<(Connection, usize)> {
+    pub fn from_bitstring(s: &str, input_count: usize, output_count: usize, nand_count: usize, nor_count: usize) -> Option<(Connection, usize)> {
 
         if s.chars().count() < 4 {
             return None;
@@ -121,7 +121,7 @@ mod connection_tests {
         let nand_index_bits = get_required_bits_count(nand_count);
         let nor_index_bits = get_required_bits_count(nor_count);
 
-        //string = Input Type bits | Output Type bits | Input index bits | Output index bits
+        //string = 2 Input Type bits | 2 Output Type bits | ? Input index bits | ? Output index bits
         //3 connections - OK
         let expected_1 = Connection {
             input: (InputConnectionType::Input, 4),
