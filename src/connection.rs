@@ -80,21 +80,9 @@ pub enum OutputConnectionType {
     NOR
 }
 
-fn get_required_bits_count(num: usize) -> usize {
-    (num as f32).log2().ceil() as usize
-}
-
 #[cfg(test)]
 mod connection_tests {
     use super::*;
-
-    #[test]
-    fn get_required_bits_count_test() {
-        assert_eq!(get_required_bits_count(8), 3);
-        assert_eq!(get_required_bits_count(12), 4);
-        assert_eq!(get_required_bits_count(2), 1);
-        assert_eq!(get_required_bits_count(100), 7);
-    }
 
     #[test]
     fn from_binary_test() {

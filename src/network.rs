@@ -25,8 +25,8 @@ impl Network {
         let nand_count_start_index = 0;
         let nor_count_start_index = nand_count_start_index + nand_count_bits;
 
-        let nand_count_end_index = nand_count_start_index + nand_count_bits - 1;
-        let nor_count_end_index = nor_count_start_index + nor_count_bits - 1;
+        let nand_count_end_index = nand_count_start_index + nand_count_bits;
+        let nor_count_end_index = nor_count_start_index + nor_count_bits;
 
         let nand_count_binary = &s[nand_count_start_index..nand_count_end_index];
         let nor_count_binary = &s[nor_count_start_index..nor_count_end_index];
@@ -35,28 +35,27 @@ impl Network {
         let nand_count = usize::from_str_radix(nand_count_binary, 2).unwrap();
         let nor_count = usize::from_str_radix(nor_count_binary, 2).unwrap();
 
-        println!("Decoding network connections from bitstring");
-
-        let connection_index_bits_count = *[input_count, output_count, nand_count, nor_count].iter().max().unwrap();
+        let connection_index_bits_count = *[input_count, output_count, nand_count, nor_count].map(|cnt| get_required_bits_count(cnt)).iter().max().unwrap();
         let connection_bits_count = 4 + (2 * connection_index_bits_count);
 
-        let connections_binary = &s[nor_count_end_index+1..];
+        println!("Connection bit size: {}", connection_bits_count);
+
+        let connections_binary = &s[nor_count_end_index..];
 
         let mut ind = 0;
         let mut connections: Vec<Connection> = Vec::new();
         while ind < connections_binary.len() {
-            println!("IND: {}", ind);
             let connection_with_len = Connection::from_bitstring(&connections_binary[ind..], input_count, output_count, nand_count, nor_count, connection_index_bits_count);
             match connection_with_len {
                 Some(connection) => {
                     connections.push(connection);
                     ind = ind + connection_bits_count
                 }
-                None => {
-                    break;
-                }
+                None => {}
             }
         }
+
+        //TODO: Clean connection - remove unused ones
 
         Some(
             Network {
@@ -69,19 +68,31 @@ impl Network {
         )
     }
 }
-/*
+
+fn get_required_bits_count(num: usize) -> usize {
+    (num as f32).log2().ceil() as usize
+}
+
 
 #[cfg(test)]
 mod network_tests {
     use super::*;
 
     #[test]
+    fn get_required_bits_count_test() {
+        assert_eq!(get_required_bits_count(8), 3);
+        assert_eq!(get_required_bits_count(12), 4);
+        assert_eq!(get_required_bits_count(2), 1);
+        assert_eq!(get_required_bits_count(100), 7);
+    }
+
+    #[test]
     fn from_bitstring_test() {
-        println!("Running network bitstring test");
         let input_count = 7; //3 bits
         let output_count = 6; // 3 bits
         let nand_count = 12; //4 bits
         let nor_count = 4; //3 bits
+        let index_bits_count = 4;
 
         let expected_connection = vec![
             Connection {
@@ -110,8 +121,6 @@ mod network_tests {
             }
         ];
 
-        println!("Running network bitstring test - exp");
-
         let expected = Network {
             input_count,
             output_count,
@@ -120,23 +129,19 @@ mod network_tests {
             connections: expected_connection,
         };
 
-        println!("Running network bitstring test - exp 2");
-
         let expected_network_str = [
             "1100", //12 NANDs
             "100", //4 NORs
-            "0000000000", //I0 -> O0
-            "00010000000", //I0 -> NAND0
-            "00010010000", //I1 -> NAND0
-            "01100000000", //NAND0 -> NOR0
-            "0010010000", //I2 -> NOR0
-            "1000000001" //NOR0 -> O1
+            "000000000000", //I0 -> O0
+            "000100000000", //I0 -> NAND0
+            "000100010000", //I1 -> NAND0
+            "011000000000", //NAND0 -> NOR0
+            "001000100000", //I2 -> NOR0
+            "100000000001" //NOR0 -> O1
         ].join("");
 
-        println!("Running network bitstring test - calc res");
-
-        let result = Network::from_bitstring(&expected_network_str, input_count, output_count, 4, 2).unwrap();
+        let result = Network::from_bitstring(&expected_network_str, input_count, output_count, 4, 3).unwrap();
 
         assert_eq!(result, expected);
     }
-}*/
+}
