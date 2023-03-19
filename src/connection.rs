@@ -1,4 +1,4 @@
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct Connection {
     pub input: (InputConnectionType, usize),
     pub output: (OutputConnectionType, usize)
@@ -66,14 +66,14 @@ impl Connection {
     }
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Eq, Hash, Clone, Debug)]
 pub enum InputConnectionType {
     Input,
     NAND,
     NOR
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Eq, Hash, Clone, Debug)]
 pub enum OutputConnectionType {
     Output,
     NAND,

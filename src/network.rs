@@ -1,5 +1,7 @@
 pub use crate::connection::*;
 
+use std::collections::HashMap;
+
 #[derive(PartialEq, Debug)]
 struct Network {
     input_count: usize,
@@ -55,7 +57,7 @@ impl Network {
             }
         }
 
-        //TODO: Clean connection - remove unused ones
+        //TODO: Clean connection - remove unused ones and where input is saturated already
 
         Some(
             Network {
@@ -67,12 +69,42 @@ impl Network {
             }
         )
     }
+
+    fn clean_connections(&mut self) {
+        let mut input_counts: HashMap<&(OutputConnectionType, usize), usize> = HashMap::new();
+        let mut connections_after_cleanup: Vec<Connection> = Vec::new();
+
+        for conn in &self.connections {
+            let output = &conn.output;
+            let max_inputs = match output.0 {
+                OutputConnectionType::Output => 1,
+                OutputConnectionType::NAND => 2,
+                OutputConnectionType::NOR => 2
+            };
+            match input_counts.get(output) {
+                None => {
+                    input_counts.insert(output, 1);
+                    connections_after_cleanup.push(conn.clone());
+                }
+                Some(count) => {
+                    let new_input_count = *count + 1;
+                    if new_input_count <= max_inputs {
+                        connections_after_cleanup.push(conn.clone());
+                    }
+                    input_counts.insert(output, new_input_count);
+                }
+            }
+        }
+
+        connections_after_cleanup.dedup();
+
+        self.connections = connections_after_cleanup;
+    }
 }
 
 fn get_required_bits_count(num: usize) -> usize {
     (num as f32).log2().ceil() as usize
 }
-
 
 #[cfg(test)]
 mod network_tests {
@@ -92,7 +124,6 @@ mod network_tests {
         let output_count = 6; // 3 bits
         let nand_count = 12; //4 bits
         let nor_count = 4; //3 bits
-        let index_bits_count = 4;
 
         let expected_connection = vec![
             Connection {
@@ -143,5 +174,83 @@ mod network_tests {
         let result = Network::from_bitstring(&expected_network_str, input_count, output_count, 4, 3).unwrap();
 
         assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn clean_connections_test() {
+        let input_count = 5;
+        let output_count = 15;
+        let nand_count = 20;
+        let nor_count = 5;
+
+        let connections = vec![
+            Connection {
+                input: (InputConnectionType::Input, 0),
+                output: (OutputConnectionType::Output, 0),
+            },
+            //To be removed
+            Connection {
+                input: (InputConnectionType::Input, 1),
+                output: (OutputConnectionType::Output, 0),
+            },
+            Connection {
+                input: (InputConnectionType::Input, 2),
+                output: (OutputConnectionType::NAND, 0),
+            },
+            Connection {
+                input: (InputConnectionType::Input, 3),
+                output: (OutputConnectionType::NAND, 0),
+            },
+            //To be removed
+            Connection {
+                input: (InputConnectionType::Input, 4),
+                output: (OutputConnectionType::NAND, 0),
+            },
+            //To be removed
+            Connection {
+                input: (InputConnectionType::NAND, 0),
+                output: (OutputConnectionType::Output, 0),
+            },
+            Connection {
+                input: (InputConnectionType::NAND, 0),
+                output: (OutputConnectionType::NOR, 3),
+            },
+            //To be removed - duplicate
+            Connection {
+                input: (InputConnectionType::NAND, 0),
+                output: (OutputConnectionType::NOR, 3),
+            }
+        ];
+
+        let cleaned_up_connections = vec![
+            Connection {
+                input: (InputConnectionType::Input, 0),
+                output: (OutputConnectionType::Output, 0),
+            },
+            Connection {
+                input: (InputConnectionType::Input, 2),
+                output: (OutputConnectionType::NAND, 0),
+            },
+            Connection {
+                input: (InputConnectionType::Input, 3),
+                output: (OutputConnectionType::NAND, 0),
+            },
+            Connection {
+                input: (InputConnectionType::NAND, 0),
+                output: (OutputConnectionType::NOR, 3),
+            }
+        ];
+
+        let mut network = Network {
+            input_count,
+            output_count,
+            nand_count,
+            nor_count,
+            connections,
+        };
+
+        network.clean_connections();
+
+        assert_eq!(network.connections, cleaned_up_connections);
     }
 }
