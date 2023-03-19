@@ -1,6 +1,6 @@
 use std::fmt;
 
-#[derive(Hash, PartialEq, Eq, Debug, Clone)]
+#[derive(Hash, PartialEq, Eq, Debug, Clone, Copy)]
 pub struct Connection {
     pub input: (InputConnectionType, usize),
     pub output: (OutputConnectionType, usize)
@@ -74,14 +74,14 @@ impl fmt::Display for Connection {
     }
 }
 
-#[derive(PartialEq, Eq, Hash, Clone, Debug)]
+#[derive(PartialEq, Eq, Hash, Clone, Debug, Copy)]
 pub enum InputConnectionType {
     Input,
     NAND,
     NOR
 }
 
-#[derive(PartialEq, Eq, Hash, Clone, Debug)]
+#[derive(PartialEq, Eq, Hash, Clone, Debug, Copy)]
 pub enum OutputConnectionType {
     Output,
     NAND,

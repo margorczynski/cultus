@@ -1,8 +1,9 @@
-pub use crate::connection::*;
+use std::collections::HashMap;
 
-use std::collections::{HashMap, HashSet};
-use log::{info, debug};
+use log::debug;
 use simple_logger::SimpleLogger;
+
+pub use crate::connection::*;
 
 #[derive(PartialEq, Debug)]
 struct Network {
@@ -71,43 +72,47 @@ impl Network {
     }
 
     fn clean_connections(&mut self) {
-        debug!("Cleaning up connections. Starting count: {}", &self.connections.len());
+        debug!("Cleaning up connections. Starting count: {}", self.connections.len());
 
-        let mut input_counts: HashMap<&(OutputConnectionType, usize), usize> = HashMap::new();
-        let mut connections_after_cleanup: Vec<Connection> = Vec::new();
+        let mut input_counts: HashMap<(OutputConnectionType, usize), usize> = HashMap::new();
+
+        let mut cleaned_up_connections: Vec<Connection> = Vec::new();
 
         //Remove connections where output is already saturated
-        for conn in &self.connections {
-            debug!("Processing conn: {}", conn);
-            let output = &conn.output;
-            let max_inputs = match output.0 {
+        for connection in &self.connections {
+            let output = connection.output.clone();
+            let max_inputs = match &output.0 {
                 OutputConnectionType::Output => 1,
                 OutputConnectionType::NAND => 2,
                 OutputConnectionType::NOR => 2
             };
-            match input_counts.get(output) {
+            match input_counts.get(&output) {
                 None => {
+                    cleaned_up_connections.push(connection.clone());
                     input_counts.insert(output, 1);
-                    connections_after_cleanup.push(conn.clone());
                 }
-                Some(count) => {
-                    let new_input_count = *count + 1;
+                Some(&count) => {
+                    let new_input_count = count + 1;
                     if new_input_count <= max_inputs {
-                        connections_after_cleanup.push(conn.clone());
+                        cleaned_up_connections.push(connection.clone());
                     }
                     input_counts.insert(output, new_input_count);
                 }
             }
         }
 
-        connections_after_cleanup.dedup();
+        cleaned_up_connections.dedup();
 
-        debug!("Connections after cleanup count: {}", connections_after_cleanup.len());
+        debug!("Connection count after dedup: {}", cleaned_up_connections.len());
 
-        //TODO: Remove connections/nodes which aren't saturated (e.g. 1 input NAND, 0 input output)
+        //TODO: Remove connections/nodes which aren't saturated (0 or 1 input NAND +  NOR)
         //TODO: Leave only connections which lead to output
 
-        self.connections = connections_after_cleanup;
+        debug!("Connections after cleanup count: {}", &self.connections.len());
+
+        //TODO: Update NAND and NOR counts
+
+        self.connections = cleaned_up_connections;
     }
 }
 
@@ -118,6 +123,7 @@ fn get_required_bits_count(num: usize) -> usize {
 #[cfg(test)]
 mod network_tests {
     use std::sync::Once;
+
     use super::*;
 
     static INIT: Once = Once::new();
