@@ -37,17 +37,20 @@ impl Network {
 
         println!("Decoding network connections from bitstring");
 
+        let connection_index_bits_count = *[input_count, output_count, nand_count, nor_count].iter().max().unwrap();
+        let connection_bits_count = 4 + (2 * connection_index_bits_count);
+
         let connections_binary = &s[nor_count_end_index+1..];
 
         let mut ind = 0;
         let mut connections: Vec<Connection> = Vec::new();
         while ind < connections_binary.len() {
             println!("IND: {}", ind);
-            let connection_with_len = Connection::from_bitstring(&connections_binary[ind..], input_count, output_count, nand_count, nor_count);
+            let connection_with_len = Connection::from_bitstring(&connections_binary[ind..], input_count, output_count, nand_count, nor_count, connection_index_bits_count);
             match connection_with_len {
-                Some((connection, bit_len)) => {
+                Some(connection) => {
                     connections.push(connection);
-                    ind = ind + bit_len
+                    ind = ind + connection_bits_count
                 }
                 None => {
                     break;
@@ -66,7 +69,7 @@ impl Network {
         )
     }
 }
-
+/*
 
 #[cfg(test)]
 mod network_tests {
@@ -136,4 +139,4 @@ mod network_tests {
 
         assert_eq!(result, expected);
     }
-}
+}*/

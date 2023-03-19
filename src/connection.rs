@@ -5,7 +5,7 @@ pub struct Connection {
 }
 
 impl Connection {
-    pub fn from_bitstring(s: &str, input_count: usize, output_count: usize, nand_count: usize, nor_count: usize) -> Option<(Connection, usize)> {
+    pub fn from_bitstring(s: &str, input_count: usize, output_count: usize, nand_count: usize, nor_count: usize, index_bits_count: usize) -> Option<Connection> {
 
         if s.chars().count() < 4 {
             return None;
@@ -32,30 +32,17 @@ impl Connection {
             _ => return None
         };
 
-        //Number of bits encoding the indexes
-        let input_index_binary_len = match input_type {
-            InputConnectionType::Input => get_required_bits_count(input_count),
-            InputConnectionType::NAND => get_required_bits_count(nand_count),
-            InputConnectionType::NOR => get_required_bits_count(nor_count)
-        };
-
-        let output_index_binary_len = match output_type {
-            OutputConnectionType::Output => get_required_bits_count(output_count),
-            OutputConnectionType::NAND => get_required_bits_count(nand_count),
-            OutputConnectionType::NOR => get_required_bits_count(nor_count)
-        };
-
-        let total_bits = 4 + input_index_binary_len + output_index_binary_len;
+        let total_bits = 4 + (2 * index_bits_count);
 
         if s.chars().count() < total_bits {
             return None;
         }
 
         //Decode the indexes for the input and output
-        let input_index_binary = &s[4..input_index_binary_len + 4];
+        let input_index_binary = &s[4..index_bits_count + 4];
         let input_index = usize::from_str_radix(input_index_binary, 2).unwrap();
 
-        let output_index_binary = &s[input_index_binary_len + 4..input_index_binary_len + output_index_binary_len + 4];
+        let output_index_binary = &s[index_bits_count + 4..2* index_bits_count + 4];
         let output_index = usize::from_str_radix(output_index_binary, 2).unwrap();
 
         match input_type {
@@ -71,10 +58,10 @@ impl Connection {
         };
 
         Some(
-            (Connection {
+            Connection {
                 input: (input_type, input_index),
                 output: (output_type, output_index)
-            }, total_bits)
+            }
         )
     }
 }
@@ -115,11 +102,7 @@ mod connection_tests {
         let output_count = 6; // 3 bits
         let nand_count = 12; //4 bits
         let nor_count = 4; //2 bits
-
-        let input_index_bits = get_required_bits_count(input_count);
-        let output_index_bits = get_required_bits_count(output_count);
-        let nand_index_bits = get_required_bits_count(nand_count);
-        let nor_index_bits = get_required_bits_count(nor_count);
+        let index_bits_count = 4; //max(3,3,4,2)
 
         //string = 2 Input Type bits | 2 Output Type bits | ? Input index bits | ? Output index bits
         //3 connections - OK
@@ -127,48 +110,43 @@ mod connection_tests {
             input: (InputConnectionType::Input, 4),
             output: (OutputConnectionType::Output, 3),
         };
-        let expected_1_str = "0000100011";
+        let expected_1_str = "000001000011";
 
         let expected_2 = Connection {
             input: (InputConnectionType::Input, 3),
             output: (OutputConnectionType::NAND, 0),
         };
-        let expected_2_str = "00010110000";
+        let expected_2_str = "000100110000";
 
         let expected_3 = Connection {
             input: (InputConnectionType::NOR, 2),
             output: (OutputConnectionType::Output, 2),
         };
-        let expected_3_str = "100010010";
+        let expected_3_str = "100000100010";
 
         //Wrong string
         let wrong_too_short_str = "100";
         let wrong_empty_str = "";
-        let input_type_too_big_str = "11010110000";
-        let output_type_too_big_str = "00110110000";
-        let input_index_too_big_str = "00011110000";
-        let output_index_too_big_str = "00010111111";
+        let input_type_too_big_str = "110100000000";
+        let output_type_too_big_str = "001100000000";
+        let input_index_too_big_str = "000101110000";
+        let output_index_too_big_str = "000100111111";
 
         //Results - OK
-        let result_1 = Connection::from_bitstring(expected_1_str, input_count, output_count, nand_count, nor_count).unwrap();
-        let result_2 = Connection::from_bitstring(expected_2_str, input_count, output_count, nand_count, nor_count).unwrap();
-        let result_3 = Connection::from_bitstring(expected_3_str, input_count, output_count, nand_count, nor_count).unwrap();
+        let result_1 = Connection::from_bitstring(expected_1_str, input_count, output_count, nand_count, nor_count, index_bits_count).unwrap();
+        let result_2 = Connection::from_bitstring(expected_2_str, input_count, output_count, nand_count, nor_count, index_bits_count).unwrap();
+        let result_3 = Connection::from_bitstring(expected_3_str, input_count, output_count, nand_count, nor_count, index_bits_count).unwrap();
         //Results - Wrong
-        let wrong_too_short = Connection::from_bitstring(wrong_too_short_str, input_count, output_count, nand_count, nor_count);
-        let wrong_empty = Connection::from_bitstring(wrong_empty_str, input_count, output_count, nand_count, nor_count);
-        let input_type_too_big = Connection::from_bitstring(input_type_too_big_str, input_count, output_count, nand_count, nor_count);
-        let output_type_too_big = Connection::from_bitstring(output_type_too_big_str, input_count, output_count, nand_count, nor_count);
-        let input_index_too_big = Connection::from_bitstring(input_index_too_big_str, input_count, output_count, nand_count, nor_count);
-        let output_index_too_big = Connection::from_bitstring(output_index_too_big_str, input_count, output_count, nand_count, nor_count);
+        let wrong_too_short = Connection::from_bitstring(wrong_too_short_str, input_count, output_count, nand_count, nor_count, index_bits_count);
+        let wrong_empty = Connection::from_bitstring(wrong_empty_str, input_count, output_count, nand_count, nor_count, index_bits_count);
+        let input_type_too_big = Connection::from_bitstring(input_type_too_big_str, input_count, output_count, nand_count, nor_count, index_bits_count);
+        let output_type_too_big = Connection::from_bitstring(output_type_too_big_str, input_count, output_count, nand_count, nor_count, index_bits_count);
+        let input_index_too_big = Connection::from_bitstring(input_index_too_big_str, input_count, output_count, nand_count, nor_count, index_bits_count);
+        let output_index_too_big = Connection::from_bitstring(output_index_too_big_str, input_count, output_count, nand_count, nor_count, index_bits_count);
         
-        assert_eq!(result_1.0, expected_1);
-        assert_eq!(result_1.1, expected_1_str.chars().count());
-
-        assert_eq!(result_2.0, expected_2);
-        assert_eq!(result_2.1, expected_2_str.chars().count());
-
-        assert_eq!(result_3.0, expected_3);
-        assert_eq!(result_3.1, expected_3_str.chars().count());
+        assert_eq!(result_1, expected_1);
+        assert_eq!(result_2, expected_2);
+        assert_eq!(result_3, expected_3);
 
         assert!(wrong_too_short.is_none());
         assert!(wrong_empty.is_none());
