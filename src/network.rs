@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use log::debug;
 use simple_logger::SimpleLogger;
@@ -92,8 +92,6 @@ impl Network {
 
         let mut input_counts: HashMap<(OutputConnectionType, usize), usize> = HashMap::new();
 
-        let mut cleaned_up_connections_over_saturation: Vec<Connection> = Vec::new();
-        let mut cleaned_up_connections_under_saturation: Vec<Connection> = Vec::new();
         let mut cleaned_up_connections_final: Vec<Connection> = Vec::new();
 
         //Remove connections where output is already saturated - has to be split to preserve order
@@ -102,45 +100,88 @@ impl Network {
             let max_inputs_cnt = get_required_saturation_cnt(output.0);
             match input_counts.get(&output) {
                 None => {
-                    cleaned_up_connections_over_saturation.push(connection.clone());
+                    cleaned_up_connections_final.push(connection.clone());
                     input_counts.insert(output, 1);
                 }
                 Some(&count) => {
                     let new_input_count = count + 1;
                     if new_input_count <= max_inputs_cnt {
-                        cleaned_up_connections_over_saturation.push(connection.clone());
+                        cleaned_up_connections_final.push(connection.clone());
                         input_counts.insert(output, new_input_count);
                     }
                 }
             }
         }
 
-        //TODO: Below will leave connection from under saturated node
-        for connection in cleaned_up_connections_over_saturation {
-            let output = &connection.output;
-            let required_inputs_cnt = get_required_saturation_cnt(output.0);
+        debug!("Connection count after over saturation removal: {}", cleaned_up_connections_final.len());
 
-            debug!("CONN: {}", connection);
-            debug!("REQ CNT: {}", required_inputs_cnt);
+        let mut connections_to_remove: HashSet<Connection> = HashSet::new();
+        loop {
+            let gates_with_connections = Network::collect_gates_with_connections(&cleaned_up_connections_final);
 
-            match input_counts.get(&output) {
-                None => {
-                }
-                Some(&count) => {
-                    if count == required_inputs_cnt {
-                        cleaned_up_connections_under_saturation.push(connection.clone())
-                    }
+            for ((gate, index), connections) in gates_with_connections {
+                let input_connections: Vec<_> = connections.iter().filter(|&conn| conn.output.0 == OutputConnectionType::Gate(gate) && conn.output.1 == index).collect();
+                let output_connections: Vec<_> = connections.iter().filter(|&conn| conn.input.0 == InputConnectionType::Gate(gate) && conn.input.1 == index).collect();
+
+                if input_connections.len() != 2 || output_connections.len() < 1 {
+                    connections_to_remove.extend(connections)
                 }
             }
+
+            if connections_to_remove.is_empty() {
+                break
+            }
+
+            for index in (0..cleaned_up_connections_final.len()).rev() {
+                if connections_to_remove.contains(&cleaned_up_connections_final[index]) {
+                    cleaned_up_connections_final.remove(index);
+                }
+            }
+            connections_to_remove.clear();
         }
 
-        //TODO: Leave only connections which where the whole path leads from input to output
+        //TODO: Remove cycles? Either trace paths or give every gate a layer - distance from input or output. Gates cannot output into gates from a lower layer
 
         debug!("Connections after cleanup count: {}", &self.connections.len());
 
-        //TODO: Update NAND and NOR counts
+        let gates_with_connections = Network::collect_gates_with_connections(&cleaned_up_connections_final);
 
-        self.connections = cleaned_up_connections_under_saturation;
+        self.nand_count  = gates_with_connections.iter().filter(|&((gate, _), _)| *gate == Gate::NAND).count();
+        self.nor_count   = gates_with_connections.iter().filter(|&((gate, _), _)| *gate == Gate::NOR).count();
+        self.connections = cleaned_up_connections_final;
+    }
+
+    fn collect_gates_with_connections(connections: &Vec<Connection>) -> HashMap<(Gate, usize), Vec<Connection>> {
+        let mut gates_with_connections: HashMap<(Gate, usize), Vec<Connection>> = HashMap::new();
+
+        for connection in connections {
+            let input = connection.input;
+            let output = connection.output;
+
+            let mut add_gate_connection = |gate_type: Gate, index: usize| {
+                let gate_id = (gate_type, index);
+                match gates_with_connections.get_mut(&gate_id) {
+                    None => {
+                        let connections_vec = vec![connection.clone()];
+                        gates_with_connections.insert(gate_id, connections_vec);
+                    }
+                    Some(curr_connections_vec) => {
+                        curr_connections_vec.push(connection.clone());
+                    }
+                }
+            };
+
+            match input.0 {
+                InputConnectionType::Input => {}
+                InputConnectionType::Gate(gate_type) => add_gate_connection(gate_type, input.1)
+            }
+            match output.0 {
+                OutputConnectionType::Output => {}
+                OutputConnectionType::Gate(gate_type) => add_gate_connection(gate_type, output.1)
+            }
+        }
+
+        gates_with_connections
     }
 }
 
@@ -231,66 +272,202 @@ mod network_tests {
     }
 
     #[test]
-    fn clean_connections_test() {
+    fn collect_gates_with_connections_test() {
         setup();
-
-        let input_count = 5;
-        let output_count = 15;
-        let nand_count = 20;
-        let nor_count = 5;
 
         let connections = vec![
             Connection {
                 input: (InputConnectionType::Input, 0),
                 output: (OutputConnectionType::Output, 0),
             },
-            //To be removed
+            Connection {
+                input: (InputConnectionType::Input, 0),
+                output: (OutputConnectionType::Output, 1),
+            },
+            Connection {
+                input: (InputConnectionType::Input, 0),
+                output: (OutputConnectionType::Output, 2),
+            },
+            Connection {
+                input: (InputConnectionType::Input, 0),
+                output: (OutputConnectionType::Gate(Gate::NAND), 0),
+            },
+            Connection {
+                input: (InputConnectionType::Input, 0),
+                output: (OutputConnectionType::Gate(Gate::NAND), 1),
+            },
             Connection {
                 input: (InputConnectionType::Input, 1),
-                output: (OutputConnectionType::Output, 0),
+                output: (OutputConnectionType::Gate(Gate::NOR), 0),
             },
             Connection {
                 input: (InputConnectionType::Input, 2),
-                output: (OutputConnectionType::Gate(Gate::NAND), 0),
+                output: (OutputConnectionType::Gate(Gate::NOR), 0),
             },
             Connection {
-                input: (InputConnectionType::Input, 3),
-                output: (OutputConnectionType::Gate(Gate::NAND), 0),
+                input: (InputConnectionType::Gate(Gate::NOR), 2),
+                output: (OutputConnectionType::Gate(Gate::NOR), 0),
             },
-            //To be removed
+        ];
+
+        let expected = HashMap::from([
+            ((Gate::NAND, 0), vec![
+                Connection {
+                    input: (InputConnectionType::Input, 0),
+                    output: (OutputConnectionType::Gate(Gate::NAND), 0),
+                }
+            ]),
+            ((Gate::NAND, 1), vec![
+                Connection {
+                    input: (InputConnectionType::Input, 0),
+                    output: (OutputConnectionType::Gate(Gate::NAND), 1),
+                }
+            ]),
+            ((Gate::NOR, 0), vec![
+                Connection {
+                    input: (InputConnectionType::Input, 1),
+                    output: (OutputConnectionType::Gate(Gate::NOR), 0),
+                },
+                Connection {
+                    input: (InputConnectionType::Input, 2),
+                    output: (OutputConnectionType::Gate(Gate::NOR), 0),
+                },
+                Connection {
+                    input: (InputConnectionType::Gate(Gate::NOR), 2),
+                    output: (OutputConnectionType::Gate(Gate::NOR), 0),
+                }
+            ]),
+            ((Gate::NOR, 2), vec![
+                Connection {
+                    input: (InputConnectionType::Gate(Gate::NOR), 2),
+                    output: (OutputConnectionType::Gate(Gate::NOR), 0),
+                }
+            ]),
+        ]);
+
+        let result = Network::collect_gates_with_connections(&connections);
+
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn clean_connections_test() {
+        setup();
+
+        let input_count = 7;
+        let output_count = 4;
+        let nand_count = 5;
+        let nor_count = 4;
+
+        let connections = vec![
             Connection {
-                input: (InputConnectionType::Input, 4),
+                input: (InputConnectionType::Input, 0),
                 output: (OutputConnectionType::Gate(Gate::NAND), 0),
             },
-            //To be removed
+            //Duplicate - removed
+            Connection {
+                input: (InputConnectionType::Input, 0),
+                output: (OutputConnectionType::Gate(Gate::NAND), 0),
+            },
             Connection {
                 input: (InputConnectionType::Gate(Gate::NAND), 0),
+                output: (OutputConnectionType::Gate(Gate::NOR), 0),
+            },
+            Connection {
+                input: (InputConnectionType::Gate(Gate::NOR), 0),
                 output: (OutputConnectionType::Output, 0),
             },
             Connection {
-                input: (InputConnectionType::Gate(Gate::NAND), 0),
-                output: (OutputConnectionType::Gate(Gate::NOR), 3),
+                input: (InputConnectionType::Input, 1),
+                output: (OutputConnectionType::Gate(Gate::NAND), 1),
             },
-            //To be removed - duplicate
             Connection {
-                input: (InputConnectionType::Gate(Gate::NAND), 0),
-                output: (OutputConnectionType::Gate(Gate::NOR), 3),
-            }
+                input: (InputConnectionType::Gate(Gate::NAND), 1),
+                output: (OutputConnectionType::Gate(Gate::NOR), 0),
+            },
+            Connection {
+                input: (InputConnectionType::Gate(Gate::NAND), 1),
+                output: (OutputConnectionType::Gate(Gate::NOR), 1),
+            },
+            Connection {
+                input: (InputConnectionType::Input, 2),
+                output: (OutputConnectionType::Gate(Gate::NAND), 1),
+            },
+            Connection {
+                input: (InputConnectionType::Input, 2),
+                output: (OutputConnectionType::Gate(Gate::NAND), 2),
+            },
+            Connection {
+                input: (InputConnectionType::Gate(Gate::NAND), 2),
+                output: (OutputConnectionType::Gate(Gate::NOR), 1),
+            },
+            Connection {
+                input: (InputConnectionType::Input, 3),
+                output: (OutputConnectionType::Gate(Gate::NAND), 2),
+            },
+            Connection {
+                input: (InputConnectionType::Input, 4),
+                output: (OutputConnectionType::Gate(Gate::NOR), 2),
+            },
+            Connection {
+                input: (InputConnectionType::Gate(Gate::NOR), 2),
+                output: (OutputConnectionType::Output, 1),
+            },
+            Connection {
+                input: (InputConnectionType::Gate(Gate::NOR), 2),
+                output: (OutputConnectionType::Output, 2),
+            },
+            Connection {
+                input: (InputConnectionType::Input, 4),
+                output: (OutputConnectionType::Gate(Gate::NAND), 3),
+            },
+            Connection {
+                input: (InputConnectionType::Gate(Gate::NAND), 3),
+                output: (OutputConnectionType::Gate(Gate::NOR), 2),
+            },
+            Connection {
+                input: (InputConnectionType::Input, 5),
+                output: (OutputConnectionType::Gate(Gate::NAND), 3),
+            },
+            Connection {
+                input: (InputConnectionType::Input, 5),
+                output: (OutputConnectionType::Gate(Gate::NAND), 4),
+            },
+            Connection {
+                input: (InputConnectionType::Input, 6),
+                output: (OutputConnectionType::Gate(Gate::NAND), 4),
+            },
+            Connection {
+                input: (InputConnectionType::Gate(Gate::NOR), 3),
+                output: (OutputConnectionType::Output, 3),
+            },
         ];
 
         let cleaned_up_connections = vec![
             Connection {
-                input: (InputConnectionType::Input, 0),
-                output: (OutputConnectionType::Output, 0),
+                input: (InputConnectionType::Input, 4),
+                output: (OutputConnectionType::Gate(Gate::NOR), 2),
             },
             Connection {
-                input: (InputConnectionType::Input, 2),
-                output: (OutputConnectionType::Gate(Gate::NAND), 0),
+                input: (InputConnectionType::Gate(Gate::NOR), 2),
+                output: (OutputConnectionType::Output, 1),
             },
             Connection {
-                input: (InputConnectionType::Input, 3),
-                output: (OutputConnectionType::Gate(Gate::NAND), 0),
-            }
+                input: (InputConnectionType::Gate(Gate::NOR), 2),
+                output: (OutputConnectionType::Output, 2),
+            },
+            Connection {
+                input: (InputConnectionType::Input, 4),
+                output: (OutputConnectionType::Gate(Gate::NAND), 3),
+            },
+            Connection {
+                input: (InputConnectionType::Gate(Gate::NAND), 3),
+                output: (OutputConnectionType::Gate(Gate::NOR), 2),
+            },
+            Connection {
+                input: (InputConnectionType::Input, 5),
+                output: (OutputConnectionType::Gate(Gate::NAND), 3),
+            },
         ];
 
         let mut network = Network {
@@ -304,5 +481,7 @@ mod network_tests {
         network.clean_connections();
 
         assert_eq!(network.connections, cleaned_up_connections);
+        assert_eq!(network.nand_count, 1);
+        assert_eq!(network.nor_count, 1);
     }
 }

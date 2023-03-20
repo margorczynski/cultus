@@ -1,6 +1,6 @@
 use std::fmt;
 
-#[derive(Hash, PartialEq, Eq, Debug, Clone, Copy)]
+#[derive(Hash, PartialEq, Eq, Clone, Copy)]
 pub struct Connection {
     pub input: (InputConnectionType, usize),
     pub output: (OutputConnectionType, usize)
@@ -70,7 +70,23 @@ impl Connection {
 
 impl fmt::Display for Connection {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "[{:?}:{}] -> [{:?}:{}]", self.input.0, self.input.1, self.output.0, self.output.1)
+        let input_type_text = match self.input.0 {
+            InputConnectionType::Input => "I".to_string(),
+            InputConnectionType::Gate(gate_type) => format!("{:?}", gate_type)
+        };
+
+        let output_type_text = match self.output.0 {
+            OutputConnectionType::Output => "O".to_string(),
+            OutputConnectionType::Gate(gate_type) => format!("{:?}", &gate_type)
+        };
+
+        write!(f, "{}({}) -> {}({})", input_type_text, self.input.1, output_type_text, self.output.1)
+    }
+}
+
+impl fmt::Debug for Connection {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self)
     }
 }
 
