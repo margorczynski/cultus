@@ -10,8 +10,6 @@ use crate::connection::InputConnectionType::Input;
 struct Network {
     input_count: usize,
     output_count: usize,
-    nand_count: usize,
-    nor_count: usize,
     connections: Vec<Connection>
 }
 
@@ -65,8 +63,6 @@ impl Network {
             Network {
                 input_count,
                 output_count,
-                nand_count,
-                nor_count,
                 connections
             }
         )
@@ -144,10 +140,6 @@ impl Network {
 
         debug!("Connections after cleanup count: {}", &self.connections.len());
 
-        let gates_with_connections = Network::collect_gates_with_connections(&cleaned_up_connections_final);
-
-        self.nand_count  = gates_with_connections.iter().filter(|&((gate, _), _)| *gate == Gate::NAND).count();
-        self.nor_count   = gates_with_connections.iter().filter(|&((gate, _), _)| *gate == Gate::NOR).count();
         self.connections = cleaned_up_connections_final;
     }
 
@@ -217,8 +209,6 @@ mod network_tests {
         setup();
         let input_count = 7; //3 bits
         let output_count = 6; // 3 bits
-        let nand_count = 12; //4 bits
-        let nor_count = 4; //3 bits
 
         let expected_connection = vec![
             Connection {
@@ -250,8 +240,6 @@ mod network_tests {
         let expected = Network {
             input_count,
             output_count,
-            nand_count,
-            nor_count,
             connections: expected_connection,
         };
 
@@ -356,8 +344,6 @@ mod network_tests {
 
         let input_count = 7;
         let output_count = 4;
-        let nand_count = 5;
-        let nor_count = 4;
 
         let connections = vec![
             Connection {
@@ -473,15 +459,11 @@ mod network_tests {
         let mut network = Network {
             input_count,
             output_count,
-            nand_count,
-            nor_count,
             connections,
         };
 
         network.clean_connections();
 
         assert_eq!(network.connections, cleaned_up_connections);
-        assert_eq!(network.nand_count, 1);
-        assert_eq!(network.nor_count, 1);
     }
 }
