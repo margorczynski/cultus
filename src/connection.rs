@@ -19,8 +19,8 @@ impl Connection {
 
         let input_type = match input_type_decimal {
             0 => InputConnectionType::Input,
-            1 => InputConnectionType::NAND,
-            2 => InputConnectionType::NOR,
+            1 => InputConnectionType::Gate(Gate::NAND),
+            2 => InputConnectionType::Gate(Gate::NOR),
             _ => return None
         };
 
@@ -29,8 +29,8 @@ impl Connection {
 
         let output_type = match output_type_decimal {
             0 => OutputConnectionType::Output,
-            1 => OutputConnectionType::NAND,
-            2 => OutputConnectionType::NOR,
+            1 => OutputConnectionType::Gate(Gate::NAND),
+            2 => OutputConnectionType::Gate(Gate::NOR),
             _ => return None
         };
 
@@ -49,14 +49,14 @@ impl Connection {
 
         match input_type {
             InputConnectionType::Input => if input_index >= input_count {return None},
-            InputConnectionType::NAND => if input_index >= nand_count {return None},
-            InputConnectionType::NOR => if input_index >= nor_count {return None},
+            InputConnectionType::Gate(Gate::NAND) => if input_index >= nand_count {return None},
+            InputConnectionType::Gate(Gate::NOR) => if input_index >= nor_count {return None},
         };
 
         match output_type {
             OutputConnectionType::Output => if output_index >= output_count {return None},
-            OutputConnectionType::NAND => if output_index >= nand_count {return None},
-            OutputConnectionType::NOR => if output_index >= nor_count {return None},
+            OutputConnectionType::Gate(Gate::NAND) => if output_index >= nand_count {return None},
+            OutputConnectionType::Gate(Gate::NOR) => if output_index >= nor_count {return None},
         };
 
         Some(
@@ -75,17 +75,21 @@ impl fmt::Display for Connection {
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Debug, Copy)]
-pub enum InputConnectionType {
-    Input,
+pub enum Gate {
     NAND,
     NOR
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Debug, Copy)]
+pub enum InputConnectionType {
+    Input,
+    Gate(Gate)
+}
+
+#[derive(PartialEq, Eq, Hash, Clone, Debug, Copy)]
 pub enum OutputConnectionType {
     Output,
-    NAND,
-    NOR
+    Gate(Gate)
 }
 
 #[cfg(test)]
@@ -110,12 +114,12 @@ mod connection_tests {
 
         let expected_2 = Connection {
             input: (InputConnectionType::Input, 3),
-            output: (OutputConnectionType::NAND, 0),
+            output: (OutputConnectionType::Gate(Gate::NAND), 0),
         };
         let expected_2_str = "000100110000";
 
         let expected_3 = Connection {
-            input: (InputConnectionType::NOR, 2),
+            input: (InputConnectionType::Gate(Gate::NOR), 2),
             output: (OutputConnectionType::Output, 2),
         };
         let expected_3_str = "100000100010";

@@ -4,6 +4,7 @@ use log::debug;
 use simple_logger::SimpleLogger;
 
 pub use crate::connection::*;
+use crate::connection::InputConnectionType::Input;
 
 #[derive(PartialEq, Debug)]
 struct Network {
@@ -71,48 +72,75 @@ impl Network {
         )
     }
 
+    /// Clean up the network connections
+    /// 1. Remove duplicates
+    /// 2. Remove connections where the output is already saturated (e.g. NOR has already 2 input connections)
+    /// 3. Remove connections which are not computable (no computable path to output)
     fn clean_connections(&mut self) {
         debug!("Cleaning up connections. Starting count: {}", self.connections.len());
 
+        self.connections.dedup();
+
+        debug!("Connection count after dedup: {}", self.connections.len());
+
+        fn get_required_saturation_cnt(oct: OutputConnectionType) -> usize {
+            match &oct {
+                OutputConnectionType::Output => 1,
+                OutputConnectionType::Gate(_) => 2
+            }
+        }
+
         let mut input_counts: HashMap<(OutputConnectionType, usize), usize> = HashMap::new();
 
-        let mut cleaned_up_connections: Vec<Connection> = Vec::new();
+        let mut cleaned_up_connections_over_saturation: Vec<Connection> = Vec::new();
+        let mut cleaned_up_connections_under_saturation: Vec<Connection> = Vec::new();
+        let mut cleaned_up_connections_final: Vec<Connection> = Vec::new();
 
-        //Remove connections where output is already saturated
+        //Remove connections where output is already saturated - has to be split to preserve order
         for connection in &self.connections {
             let output = connection.output.clone();
-            let max_inputs = match &output.0 {
-                OutputConnectionType::Output => 1,
-                OutputConnectionType::NAND => 2,
-                OutputConnectionType::NOR => 2
-            };
+            let max_inputs_cnt = get_required_saturation_cnt(output.0);
             match input_counts.get(&output) {
                 None => {
-                    cleaned_up_connections.push(connection.clone());
+                    cleaned_up_connections_over_saturation.push(connection.clone());
                     input_counts.insert(output, 1);
                 }
                 Some(&count) => {
                     let new_input_count = count + 1;
-                    if new_input_count <= max_inputs {
-                        cleaned_up_connections.push(connection.clone());
+                    if new_input_count <= max_inputs_cnt {
+                        cleaned_up_connections_over_saturation.push(connection.clone());
+                        input_counts.insert(output, new_input_count);
                     }
-                    input_counts.insert(output, new_input_count);
                 }
             }
         }
 
-        cleaned_up_connections.dedup();
+        //TODO: Below will leave connection from under saturated node
+        for connection in cleaned_up_connections_over_saturation {
+            let output = &connection.output;
+            let required_inputs_cnt = get_required_saturation_cnt(output.0);
 
-        debug!("Connection count after dedup: {}", cleaned_up_connections.len());
+            debug!("CONN: {}", connection);
+            debug!("REQ CNT: {}", required_inputs_cnt);
 
-        //TODO: Remove connections/nodes which aren't saturated (0 or 1 input NAND +  NOR)
-        //TODO: Leave only connections which lead to output
+            match input_counts.get(&output) {
+                None => {
+                }
+                Some(&count) => {
+                    if count == required_inputs_cnt {
+                        cleaned_up_connections_under_saturation.push(connection.clone())
+                    }
+                }
+            }
+        }
+
+        //TODO: Leave only connections which where the whole path leads from input to output
 
         debug!("Connections after cleanup count: {}", &self.connections.len());
 
         //TODO: Update NAND and NOR counts
 
-        self.connections = cleaned_up_connections;
+        self.connections = cleaned_up_connections_under_saturation;
     }
 }
 
@@ -158,22 +186,22 @@ mod network_tests {
             },
             Connection {
                 input: (InputConnectionType::Input, 0),
-                output: (OutputConnectionType::NAND, 0),
+                output: (OutputConnectionType::Gate(Gate::NAND), 0),
             },
             Connection {
                 input: (InputConnectionType::Input, 1),
-                output: (OutputConnectionType::NAND, 0),
+                output: (OutputConnectionType::Gate(Gate::NAND), 0),
             },
             Connection {
-                input: (InputConnectionType::NAND, 0),
-                output: (OutputConnectionType::NOR, 0),
+                input: (InputConnectionType::Gate(Gate::NAND), 0),
+                output: (OutputConnectionType::Gate(Gate::NOR), 0),
             },
             Connection {
                 input: (InputConnectionType::Input, 2),
-                output: (OutputConnectionType::NOR, 0),
+                output: (OutputConnectionType::Gate(Gate::NOR), 0),
             },
             Connection {
-                input: (InputConnectionType::NOR, 0),
+                input: (InputConnectionType::Gate(Gate::NOR), 0),
                 output: (OutputConnectionType::Output, 1),
             }
         ];
@@ -223,30 +251,30 @@ mod network_tests {
             },
             Connection {
                 input: (InputConnectionType::Input, 2),
-                output: (OutputConnectionType::NAND, 0),
+                output: (OutputConnectionType::Gate(Gate::NAND), 0),
             },
             Connection {
                 input: (InputConnectionType::Input, 3),
-                output: (OutputConnectionType::NAND, 0),
+                output: (OutputConnectionType::Gate(Gate::NAND), 0),
             },
             //To be removed
             Connection {
                 input: (InputConnectionType::Input, 4),
-                output: (OutputConnectionType::NAND, 0),
+                output: (OutputConnectionType::Gate(Gate::NAND), 0),
             },
             //To be removed
             Connection {
-                input: (InputConnectionType::NAND, 0),
+                input: (InputConnectionType::Gate(Gate::NAND), 0),
                 output: (OutputConnectionType::Output, 0),
             },
             Connection {
-                input: (InputConnectionType::NAND, 0),
-                output: (OutputConnectionType::NOR, 3),
+                input: (InputConnectionType::Gate(Gate::NAND), 0),
+                output: (OutputConnectionType::Gate(Gate::NOR), 3),
             },
             //To be removed - duplicate
             Connection {
-                input: (InputConnectionType::NAND, 0),
-                output: (OutputConnectionType::NOR, 3),
+                input: (InputConnectionType::Gate(Gate::NAND), 0),
+                output: (OutputConnectionType::Gate(Gate::NOR), 3),
             }
         ];
 
@@ -257,15 +285,11 @@ mod network_tests {
             },
             Connection {
                 input: (InputConnectionType::Input, 2),
-                output: (OutputConnectionType::NAND, 0),
+                output: (OutputConnectionType::Gate(Gate::NAND), 0),
             },
             Connection {
                 input: (InputConnectionType::Input, 3),
-                output: (OutputConnectionType::NAND, 0),
-            },
-            Connection {
-                input: (InputConnectionType::NAND, 0),
-                output: (OutputConnectionType::NOR, 3),
+                output: (OutputConnectionType::Gate(Gate::NAND), 0),
             }
         ];
 
