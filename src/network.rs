@@ -86,18 +86,21 @@ impl Network {
     }
 
     /// Clean up the network connections
-    /// 1. Remove duplicates
-    /// 2. Remove connections where the output is already saturated (e.g. NOR has already 2 input connections)
-    /// 3. Remove connections which are not computable (no computable path to output, gate hasn't got 2 inputs and 1 output)
-    /// 4. Remove connections which create a cycle
+    /// 1. Remove connections which are not computable (no computable path to output, gate hasn't got 2 inputs and 1 output)
+    /// 2. Remove connections which create a cycle
     pub fn clean_connections(&mut self) {
         debug!("Cleaning up connections. Starting count: {}", self.connections.len());
 
         let mut cleaned_up_connections: HashSet<Connection> = self.connections.clone();
 
-/*        for input_connection in cleaned_up_connections_final.iter().filter(|&conn| conn.input.0 == InputConnectionType::Input) {
-            let cycle_connections = Network::get_cycles(input_connection, &cleaned_up_connections_final);
-        }*/
+        let cycle_connections = cleaned_up_connections
+            .iter()
+            .filter(|&conn| conn.input.0 == InputConnectionType::Input)
+            .map(|input_conn| Network::get_cycles(input_conn, &cleaned_up_connections))
+            .reduce(|acc, e| acc.union(&e).copied().collect())
+            .unwrap();
+
+        cleaned_up_connections = cleaned_up_connections.difference(&cycle_connections).cloned().collect();
 
         let mut connections_to_remove: HashSet<Connection> = HashSet::new();
         loop {
@@ -120,8 +123,6 @@ impl Network {
 
             connections_to_remove.clear();
         }
-
-        //TODO: Remove cycles? Either trace paths or give every gate a layer - distance from input or output. Gates cannot output into gates from a lower layer
 
         debug!("Connections after cleanup count: {}", cleaned_up_connections.len());
 
@@ -352,7 +353,7 @@ mod network_tests {
         setup();
 
         let input_count = 7;
-        let output_count = 4;
+        let output_count = 5;
 
         let connections = HashSet::from_iter(vec![
             Connection {
@@ -430,6 +431,19 @@ mod network_tests {
             Connection {
                 input: (InputConnectionType::Gate(Gate::NOR), 3),
                 output: (OutputConnectionType::Output, 3),
+            },
+            //Test cycle removal
+            Connection {
+                input: (InputConnectionType::Gate(Gate::NAND), 4),
+                output: (OutputConnectionType::Gate(Gate::NOR), 4),
+            },
+            Connection {
+                input: (InputConnectionType::Gate(Gate::NOR), 4),
+                output: (OutputConnectionType::Gate(Gate::NOR), 4),
+            },
+            Connection {
+                input: (InputConnectionType::Gate(Gate::NOR), 4),
+                output: (OutputConnectionType::Output, 4),
             },
         ]);
 
