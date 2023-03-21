@@ -9,7 +9,7 @@ pub use crate::connection::*;
 struct Network {
     input_count: usize,
     output_count: usize,
-    connections: Vec<Connection>
+    connections: HashSet<Connection>
 }
 
 //TODO: Verify gate has exactly two inputs, output at most 1 input
@@ -46,12 +46,30 @@ impl Network {
         let connections_binary = &s[nor_count_end_index..];
 
         let mut ind = 0;
-        let mut connections: Vec<Connection> = Vec::new();
+        let mut connections: HashSet<Connection> = HashSet::new();
+        let mut input_counts: HashMap<(OutputConnectionType, usize), usize> = HashMap::new();
         while ind < connections_binary.len() {
             let connection_with_len = Connection::from_bitstring(&connections_binary[ind..], input_count, output_count, nand_count, nor_count, connection_index_bits_count);
             match connection_with_len {
                 Some(connection) => {
-                    connections.push(connection);
+                    let output = connection.output.clone();
+                    let max_inputs_cnt = match output.0 {
+                        OutputConnectionType::Output => 1,
+                        OutputConnectionType::Gate(_) => 2
+                    };
+                    match input_counts.get(&output) {
+                        None => {
+                            connections.insert(connection);
+                            input_counts.insert(output, 1);
+                        }
+                        Some(&count) => {
+                            let new_input_count = count + 1;
+                            if new_input_count <= max_inputs_cnt {
+                                connections.insert(connection);
+                                input_counts.insert(output, new_input_count);
+                            }
+                        }
+                    }
                     ind = ind + connection_bits_count
                 }
                 None => {}
@@ -75,51 +93,15 @@ impl Network {
     pub fn clean_connections(&mut self) {
         debug!("Cleaning up connections. Starting count: {}", self.connections.len());
 
-        self.connections.dedup();
+        let mut cleaned_up_connections: HashSet<Connection> = self.connections.clone();
 
-        debug!("Connection count after dedup: {}", self.connections.len());
-
-        fn get_required_saturation_cnt(oct: OutputConnectionType) -> usize {
-            match &oct {
-                OutputConnectionType::Output => 1,
-                OutputConnectionType::Gate(_) => 2
-            }
-        }
-
-        let mut input_counts: HashMap<(OutputConnectionType, usize), usize> = HashMap::new();
-
-        let mut cleaned_up_connections_final: Vec<Connection> = Vec::new();
-
-        //Remove connections where output is already saturated - has to be split to preserve order
-        for connection in &self.connections {
-            let output = connection.output.clone();
-            let max_inputs_cnt = get_required_saturation_cnt(output.0);
-            match input_counts.get(&output) {
-                None => {
-                    cleaned_up_connections_final.push(connection.clone());
-                    input_counts.insert(output, 1);
-                }
-                Some(&count) => {
-                    let new_input_count = count + 1;
-                    if new_input_count <= max_inputs_cnt {
-                        cleaned_up_connections_final.push(connection.clone());
-                        input_counts.insert(output, new_input_count);
-                    }
-                }
-            }
-        }
-
-        debug!("Connection count after over saturation removal: {}", cleaned_up_connections_final.len());
-
-        for input_connection in cleaned_up_connections_final.iter().filter(|&conn| conn.input.0 == InputConnectionType::Input) {
+/*        for input_connection in cleaned_up_connections_final.iter().filter(|&conn| conn.input.0 == InputConnectionType::Input) {
             let cycle_connections = Network::get_cycles(input_connection, &cleaned_up_connections_final);
-
-
-        }
+        }*/
 
         let mut connections_to_remove: HashSet<Connection> = HashSet::new();
         loop {
-            let gates_with_connections = Network::collect_gates_with_connections(&cleaned_up_connections_final);
+            let gates_with_connections = Network::collect_gates_with_connections(&cleaned_up_connections);
 
             for ((gate, index), connections) in gates_with_connections {
                 let input_connections: Vec<_> = connections.iter().filter(|&conn| conn.output.0 == OutputConnectionType::Gate(gate) && conn.output.1 == index).collect();
@@ -134,23 +116,20 @@ impl Network {
                 break
             }
 
-            for index in (0..cleaned_up_connections_final.len()).rev() {
-                if connections_to_remove.contains(&cleaned_up_connections_final[index]) {
-                    cleaned_up_connections_final.remove(index);
-                }
-            }
+            cleaned_up_connections = cleaned_up_connections.difference(&connections_to_remove).cloned().collect();
+
             connections_to_remove.clear();
         }
 
         //TODO: Remove cycles? Either trace paths or give every gate a layer - distance from input or output. Gates cannot output into gates from a lower layer
 
-        debug!("Connections after cleanup count: {}", &self.connections.len());
+        debug!("Connections after cleanup count: {}", cleaned_up_connections.len());
 
-        self.connections = cleaned_up_connections_final;
+        self.connections = cleaned_up_connections;
     }
 
-    fn collect_gates_with_connections(connections: &Vec<Connection>) -> HashMap<(Gate, usize), Vec<Connection>> {
-        let mut gates_with_connections: HashMap<(Gate, usize), Vec<Connection>> = HashMap::new();
+    fn collect_gates_with_connections(connections: &HashSet<Connection>) -> HashMap<(Gate, usize), HashSet<Connection>> {
+        let mut gates_with_connections: HashMap<(Gate, usize), HashSet<Connection>> = HashMap::new();
 
         for connection in connections {
             let input = connection.input;
@@ -160,11 +139,11 @@ impl Network {
                 let gate_id = (gate_type, index);
                 match gates_with_connections.get_mut(&gate_id) {
                     None => {
-                        let connections_vec = vec![connection.clone()];
-                        gates_with_connections.insert(gate_id, connections_vec);
+                        let connections_set = HashSet::from_iter(vec![connection.clone()]);
+                        gates_with_connections.insert(gate_id, connections_set);
                     }
                     Some(curr_connections_vec) => {
-                        curr_connections_vec.push(connection.clone());
+                        curr_connections_vec.insert(connection.clone());
                     }
                 }
             };
@@ -240,7 +219,7 @@ mod network_tests {
         let input_count = 7; //3 bits
         let output_count = 6; // 3 bits
 
-        let expected_connection = vec![
+        let expected_connection = HashSet::from_iter(vec![
             Connection {
                 input: (InputConnectionType::Input, 0),
                 output: (OutputConnectionType::Output, 0),
@@ -265,7 +244,7 @@ mod network_tests {
                 input: (InputConnectionType::Gate(Gate::NOR), 0),
                 output: (OutputConnectionType::Output, 1),
             }
-        ];
+        ]);
 
         let expected = Network {
             input_count,
@@ -293,7 +272,7 @@ mod network_tests {
     fn collect_gates_with_connections_test() {
         setup();
 
-        let connections = vec![
+        let connections = HashSet::from_iter(vec![
             Connection {
                 input: (InputConnectionType::Input, 0),
                 output: (OutputConnectionType::Output, 0),
@@ -326,22 +305,22 @@ mod network_tests {
                 input: (InputConnectionType::Gate(Gate::NOR), 2),
                 output: (OutputConnectionType::Gate(Gate::NOR), 0),
             },
-        ];
+        ]);
 
         let expected = HashMap::from([
-            ((Gate::NAND, 0), vec![
+            ((Gate::NAND, 0), HashSet::from_iter(vec![
                 Connection {
                     input: (InputConnectionType::Input, 0),
                     output: (OutputConnectionType::Gate(Gate::NAND), 0),
                 }
-            ]),
-            ((Gate::NAND, 1), vec![
+            ])),
+            ((Gate::NAND, 1), HashSet::from_iter(vec![
                 Connection {
                     input: (InputConnectionType::Input, 0),
                     output: (OutputConnectionType::Gate(Gate::NAND), 1),
                 }
-            ]),
-            ((Gate::NOR, 0), vec![
+            ])),
+            ((Gate::NOR, 0), HashSet::from_iter(vec![
                 Connection {
                     input: (InputConnectionType::Input, 1),
                     output: (OutputConnectionType::Gate(Gate::NOR), 0),
@@ -354,13 +333,13 @@ mod network_tests {
                     input: (InputConnectionType::Gate(Gate::NOR), 2),
                     output: (OutputConnectionType::Gate(Gate::NOR), 0),
                 }
-            ]),
-            ((Gate::NOR, 2), vec![
+            ])),
+            ((Gate::NOR, 2), HashSet::from_iter(vec![
                 Connection {
                     input: (InputConnectionType::Gate(Gate::NOR), 2),
                     output: (OutputConnectionType::Gate(Gate::NOR), 0),
                 }
-            ]),
+            ])),
         ]);
 
         let result = Network::collect_gates_with_connections(&connections);
@@ -375,12 +354,7 @@ mod network_tests {
         let input_count = 7;
         let output_count = 4;
 
-        let connections = vec![
-            Connection {
-                input: (InputConnectionType::Input, 0),
-                output: (OutputConnectionType::Gate(Gate::NAND), 0),
-            },
-            //Duplicate - removed
+        let connections = HashSet::from_iter(vec![
             Connection {
                 input: (InputConnectionType::Input, 0),
                 output: (OutputConnectionType::Gate(Gate::NAND), 0),
@@ -457,9 +431,9 @@ mod network_tests {
                 input: (InputConnectionType::Gate(Gate::NOR), 3),
                 output: (OutputConnectionType::Output, 3),
             },
-        ];
+        ]);
 
-        let cleaned_up_connections = vec![
+        let cleaned_up_connections: HashSet<Connection> = HashSet::from_iter(vec![
             Connection {
                 input: (InputConnectionType::Input, 4),
                 output: (OutputConnectionType::Gate(Gate::NOR), 2),
@@ -484,7 +458,7 @@ mod network_tests {
                 input: (InputConnectionType::Input, 5),
                 output: (OutputConnectionType::Gate(Gate::NAND), 3),
             },
-        ];
+        ]);
 
         let mut network = Network {
             input_count,
@@ -494,7 +468,9 @@ mod network_tests {
 
         network.clean_connections();
 
-        assert_eq!(network.connections, cleaned_up_connections);
+        let network_connections_set = HashSet::from_iter(network.connections.iter().cloned());
+
+        assert_eq!(network_connections_set, cleaned_up_connections);
     }
 
     #[test]

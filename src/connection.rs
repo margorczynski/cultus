@@ -1,6 +1,6 @@
 use std::fmt;
 
-#[derive(Hash, PartialEq, Eq, Clone, Copy)]
+#[derive(Hash, PartialEq, Eq, Clone, Copy, PartialOrd, Ord)]
 pub struct Connection {
     pub input: (InputConnectionType, usize),
     pub output: (OutputConnectionType, usize)
@@ -90,13 +90,13 @@ impl fmt::Debug for Connection {
     }
 }
 
-#[derive(PartialEq, Eq, Hash, Clone, Debug, Copy)]
+#[derive(PartialEq, Eq, Hash, Clone, Debug, Copy, PartialOrd, Ord)]
 pub enum Gate {
     NAND,
     NOR
 }
 
-#[derive(PartialEq, Eq, Hash, Clone, Debug, Copy)]
+#[derive(PartialEq, Eq, Hash, Clone, Debug, Copy, PartialOrd, Ord)]
 pub enum InputConnectionType {
     Input,
     Gate(Gate)
@@ -114,7 +114,7 @@ impl PartialEq<OutputConnectionType> for InputConnectionType {
     }
 }
 
-#[derive(PartialEq, Eq, Hash, Clone, Debug, Copy)]
+#[derive(PartialEq, Eq, Hash, Clone, Debug, Copy, PartialOrd, Ord)]
 pub enum OutputConnectionType {
     Output,
     Gate(Gate)
