@@ -4,7 +4,6 @@ use log::debug;
 use simple_logger::SimpleLogger;
 
 pub use crate::connection::*;
-use crate::connection::InputConnectionType::Input;
 
 #[derive(PartialEq, Debug)]
 struct Network {
@@ -71,8 +70,9 @@ impl Network {
     /// Clean up the network connections
     /// 1. Remove duplicates
     /// 2. Remove connections where the output is already saturated (e.g. NOR has already 2 input connections)
-    /// 3. Remove connections which are not computable (no computable path to output)
-    fn clean_connections(&mut self) {
+    /// 3. Remove connections which are not computable (no computable path to output, gate hasn't got 2 inputs and 1 output)
+    /// 4. Remove connections which create a cycle
+    pub fn clean_connections(&mut self) {
         debug!("Cleaning up connections. Starting count: {}", self.connections.len());
 
         self.connections.dedup();
@@ -110,6 +110,12 @@ impl Network {
         }
 
         debug!("Connection count after over saturation removal: {}", cleaned_up_connections_final.len());
+
+        for input_connection in cleaned_up_connections_final.iter().filter(|&conn| conn.input.0 == InputConnectionType::Input) {
+            let cycle_connections = Network::get_cycles(input_connection, &cleaned_up_connections_final);
+
+
+        }
 
         let mut connections_to_remove: HashSet<Connection> = HashSet::new();
         loop {
@@ -175,6 +181,31 @@ impl Network {
 
         gates_with_connections
     }
+
+    fn get_cycles(start_connection: &Connection, connections: &HashSet<Connection>) -> HashSet<Connection> {
+        let mut to_explore: Vec<&Connection> = Vec::new();
+        let mut explored: Vec<&Connection> = Vec::new();
+        let mut cycles: HashSet<Connection> = HashSet::new();
+
+        to_explore.push(&start_connection);
+
+        while !to_explore.is_empty() {
+            let connection = to_explore.pop().unwrap();
+
+            if explored.contains(&connection) {
+                cycles.insert(connection.clone());
+            } else {
+                explored.push(connection);
+
+                let outputs: Vec<&Connection> =
+                    connections.iter().filter(|&conn| conn.input.0 == connection.output.0 && conn.input.1 == connection.output.1).collect();
+
+                to_explore.append(&mut outputs.clone());
+            }
+        }
+
+        cycles
+    }
 }
 
 fn get_required_bits_count(num: usize) -> usize {
@@ -184,7 +215,6 @@ fn get_required_bits_count(num: usize) -> usize {
 #[cfg(test)]
 mod network_tests {
     use std::sync::Once;
-
     use super::*;
 
     static INIT: Once = Once::new();
@@ -465,5 +495,74 @@ mod network_tests {
         network.clean_connections();
 
         assert_eq!(network.connections, cleaned_up_connections);
+    }
+
+    #[test]
+    fn explore_connections_test() {
+        setup();
+
+        let connections = vec![
+            Connection {
+                input: (InputConnectionType::Input, 0),
+                output: (OutputConnectionType::Gate(Gate::NAND), 0),
+            },
+            Connection {
+                input: (InputConnectionType::Input, 1),
+                output: (OutputConnectionType::Gate(Gate::NAND), 1),
+            },
+            Connection {
+                input: (InputConnectionType::Gate(Gate::NAND), 0),
+                output: (OutputConnectionType::Gate(Gate::NOR), 0),
+            },
+            Connection {
+                input: (InputConnectionType::Gate(Gate::NOR), 0),
+                output: (OutputConnectionType::Gate(Gate::NAND), 1),
+            },
+            Connection {
+                input: (InputConnectionType::Gate(Gate::NAND), 1),
+                output: (OutputConnectionType::Gate(Gate::NAND), 0),
+            },
+            Connection {
+                input: (InputConnectionType::Gate(Gate::NAND), 1),
+                output: (OutputConnectionType::Gate(Gate::NOR), 0),
+            },
+        ];
+
+        let connections_set = HashSet::from_iter(connections);
+
+        let start_connection_1 = connections_set.iter().find(|&e| e.input.0 == InputConnectionType::Input && e.input.1 == 0).unwrap();
+        let start_connection_2 = connections_set.iter().find(|&e| e.input.0 == InputConnectionType::Input && e.input.1 == 1).unwrap();
+
+        let expected_1 = HashSet::from_iter(vec![
+            Connection {
+                input: (InputConnectionType::Gate(Gate::NAND), 0),
+                output: (OutputConnectionType::Gate(Gate::NOR), 0),
+            },
+            Connection {
+                input: (InputConnectionType::Gate(Gate::NOR), 0),
+                output: (OutputConnectionType::Gate(Gate::NAND), 1),
+            },
+        ]);
+
+        let expected_2 = HashSet::from_iter(vec![
+            Connection {
+                input: (InputConnectionType::Gate(Gate::NAND), 1),
+                output: (OutputConnectionType::Gate(Gate::NAND), 0),
+            },
+            Connection {
+                input: (InputConnectionType::Gate(Gate::NAND), 1),
+                output: (OutputConnectionType::Gate(Gate::NOR), 0),
+            },
+            Connection {
+                input: (InputConnectionType::Gate(Gate::NOR), 0),
+                output: (OutputConnectionType::Gate(Gate::NAND), 1),
+            },
+        ]);
+
+        let result_1 = Network::get_cycles(start_connection_1, &connections_set);
+        let result_2 = Network::get_cycles(start_connection_2, &connections_set);
+
+        assert_eq!(result_1, expected_1);
+        assert_eq!(result_2, expected_2);
     }
 }

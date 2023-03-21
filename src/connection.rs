@@ -102,10 +102,34 @@ pub enum InputConnectionType {
     Gate(Gate)
 }
 
+impl PartialEq<OutputConnectionType> for InputConnectionType {
+    fn eq(&self, other: &OutputConnectionType) -> bool {
+        match self {
+            InputConnectionType::Input => false,
+            InputConnectionType::Gate(input_gate_type) => match other {
+                OutputConnectionType::Output => false,
+                OutputConnectionType::Gate(output_gate_type) => input_gate_type == output_gate_type
+            }
+        }
+    }
+}
+
 #[derive(PartialEq, Eq, Hash, Clone, Debug, Copy)]
 pub enum OutputConnectionType {
     Output,
     Gate(Gate)
+}
+
+impl PartialEq<InputConnectionType> for OutputConnectionType {
+    fn eq(&self, other: &InputConnectionType) -> bool {
+        match self {
+            OutputConnectionType::Output => false,
+            OutputConnectionType::Gate(output_gate_type) => match other {
+                InputConnectionType::Input => false,
+                InputConnectionType::Gate(input_gate_type) => output_gate_type == input_gate_type
+            }
+        }
+    }
 }
 
 #[cfg(test)]
