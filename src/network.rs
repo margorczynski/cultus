@@ -12,9 +12,16 @@ struct Network {
     connections: HashSet<Connection>
 }
 
-//TODO: Verify gate has exactly two inputs, output at most 1 input
-
 impl Network {
+
+    /// Create a logic gate network from a string containing binary (0s and 1s)
+    /// The amount of inputs and outputs of the network is constant and specified as arguments.
+    /// The amount of bits (and thus maximum number) encoding the amount of NAND and NOR gates is constant and specified as arguments.
+    /// Connections are deduplicated after decoding.
+    /// Incorrect connections will be discarded and connections to a saturated input will be discarded in order of decoding.
+    ///
+    /// The string is in the form:
+    /// NAND amount bits | NOR amount bits | Connection 1 input type | Connection 1 output type | Connection 1 input index | Connection 1 output index | Connection 2 ...
     pub fn from_bitstring(s: &str, input_count: usize, output_count: usize, nand_count_bits: usize, nor_count_bits: usize) -> Option<Network> {
         debug!("Decoding network from bitstring: {}", s);
 
@@ -95,13 +102,14 @@ impl Network {
     }
 
     /// Clean up the network connections
-    /// 1. Remove connections which are not computable (no computable path to output, gate hasn't got 2 inputs and 1 output)
-    /// 2. Remove connections which create a cycle
+    /// 1. Remove connections which create a cycle
+    /// 2. Remove connections which are not computable (no path from input to output going through it, gate hasn't got 2 inputs and 1 output)
     pub fn clean_connections(&mut self) {
         debug!("Cleaning up connections. Starting count: {}", self.connections.len());
 
         let mut cleaned_up_connections: HashSet<Connection> = self.connections.clone();
 
+        //Go through all the input connections and for each get the connections which cycle when exploring starting from that input
         let cycle_connections = cleaned_up_connections
             .iter()
             .filter(|&conn| conn.input.0 == InputConnectionType::Input)
@@ -109,8 +117,11 @@ impl Network {
             .reduce(|acc, e| acc.union(&e).copied().collect())
             .unwrap();
 
+        //Remove the cycling connections
         cleaned_up_connections = cleaned_up_connections.difference(&cycle_connections).cloned().collect();
 
+        //Remove connections of gates where the number of inputs or outputs is incorrect
+        //This is done in an iterative manner until there are no more connections to remove
         let mut connections_to_remove: HashSet<Connection> = HashSet::new();
         loop {
             let gates_with_connections = Network::collect_gates_with_connections(&cleaned_up_connections);
