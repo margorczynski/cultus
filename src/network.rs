@@ -46,6 +46,8 @@ impl Network {
         let connections_binary = &s[nor_count_end_index..];
 
         let mut ind = 0;
+        let mut none_connection_count = 0;
+        let mut over_saturated_connection_count = 0;
         let mut connections: HashSet<Connection> = HashSet::new();
         let mut input_counts: HashMap<(OutputConnectionType, usize), usize> = HashMap::new();
         while ind < connections_binary.len() {
@@ -67,14 +69,21 @@ impl Network {
                             if new_input_count <= max_inputs_cnt {
                                 connections.insert(connection);
                                 input_counts.insert(output, new_input_count);
+                            } else {
+                                over_saturated_connection_count = over_saturated_connection_count + 1;
                             }
                         }
                     }
                     ind = ind + connection_bits_count
                 }
-                None => {}
+                None => {
+                    none_connection_count = none_connection_count + 1;
+                }
             }
         }
+
+        debug!("Connections which couldn't be built from binary count: {}", none_connection_count);
+        debug!("Connections discarded because of input saturation limit: {}", over_saturated_connection_count);
 
         Some(
             Network {
