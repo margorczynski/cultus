@@ -149,6 +149,77 @@ impl Network {
         self.connections = cleaned_up_connections;
     }
 
+    /// Get the closure that computes the output vector given an input vector
+    pub fn get_outputs_computation_func(&self) -> impl Fn(Vec<bool>) -> Vec<bool> + '_ {
+
+        let mut output_index_to_input_index_and_gates_stacks_map: HashMap<usize, (Vec<Gate>, Vec<usize>)> = HashMap::new();
+        for output_connection in self.connections.iter().filter(|&conn| conn.output.0 == OutputConnectionType::Output) {
+            let mut to_explore: Vec<&Connection> = Vec::new();
+            let mut gate_stack: Vec<Gate> = Vec::new();
+            let mut input_index_stack: Vec<usize> = Vec::new();
+
+            to_explore.push(output_connection);
+
+            while !to_explore.is_empty() {
+                let connection = to_explore.pop().unwrap();
+
+                match connection.input.0 {
+                    InputConnectionType::Input => {
+                        input_index_stack.push(connection.input.1)
+                    }
+                    InputConnectionType::Gate(gate) => {
+                        gate_stack.push(gate)
+                    }
+                }
+
+                let inputs: Vec<&Connection> =
+                    self.connections.iter().filter(|&conn| conn.output.0 == connection.input.0 && conn.output.1 == connection.input.1).collect();
+
+                to_explore.append(&mut inputs.clone());
+            }
+
+            debug!("Finished for connection {}, gate stack: {:?}, index stack: {:?}", output_connection, gate_stack, input_index_stack);
+
+            output_index_to_input_index_and_gates_stacks_map.insert(output_connection.output.1, (gate_stack, input_index_stack));
+        }
+
+        move |input_bits: Vec<bool>| -> Vec<bool> {
+
+            let mut output: Vec<bool> = Vec::new();
+            for output_idx in 0..self.output_count {
+                match output_index_to_input_index_and_gates_stacks_map.get(&output_idx) {
+                    None => {
+                        output.push(false)
+                    },
+                    Some((gates, input_indexes)) => {
+
+                        debug!("Stacks for output {}: gates: {:?}, indexes: {:?}", output_idx, gates, input_indexes);
+                        let mut value_bits_stack: Vec<bool> = input_indexes.iter().map(|&idx| input_bits.get(idx).unwrap().clone()).collect();
+
+                        for gate in gates {
+                            //After cleanup it should be impossible for this to throw
+                            let first_value = value_bits_stack.pop().unwrap();
+                            let second_value = value_bits_stack.pop().unwrap();
+
+                            match gate {
+                                Gate::NAND => {
+                                    value_bits_stack.push(!(first_value && second_value))
+                                }
+                                Gate::NOR => {
+                                    value_bits_stack.push(!(first_value || second_value))
+                                }
+                            }
+                        }
+
+                        //After cleanup it should be impossible for this to throw
+                        output.push(value_bits_stack.first().unwrap().clone());
+                    }
+                }
+            }
+            output
+        }
+    }
+
     fn collect_gates_with_connections(connections: &HashSet<Connection>) -> HashMap<(Gate, usize), HashSet<Connection>> {
         let mut gates_with_connections: HashMap<(Gate, usize), HashSet<Connection>> = HashMap::new();
 
@@ -208,6 +279,7 @@ impl Network {
     }
 }
 
+//TODO: Movei nside
 fn get_required_bits_count(num: usize) -> usize {
     (num as f32).log2().ceil() as usize
 }
@@ -285,85 +357,6 @@ mod network_tests {
         ].join("");
 
         let result = Network::from_bitstring(&expected_network_str, input_count, output_count, 4, 3).unwrap();
-
-        assert_eq!(result, expected);
-    }
-
-    #[test]
-    fn collect_gates_with_connections_test() {
-        setup();
-
-        let connections = HashSet::from_iter(vec![
-            Connection {
-                input: (InputConnectionType::Input, 0),
-                output: (OutputConnectionType::Output, 0),
-            },
-            Connection {
-                input: (InputConnectionType::Input, 0),
-                output: (OutputConnectionType::Output, 1),
-            },
-            Connection {
-                input: (InputConnectionType::Input, 0),
-                output: (OutputConnectionType::Output, 2),
-            },
-            Connection {
-                input: (InputConnectionType::Input, 0),
-                output: (OutputConnectionType::Gate(Gate::NAND), 0),
-            },
-            Connection {
-                input: (InputConnectionType::Input, 0),
-                output: (OutputConnectionType::Gate(Gate::NAND), 1),
-            },
-            Connection {
-                input: (InputConnectionType::Input, 1),
-                output: (OutputConnectionType::Gate(Gate::NOR), 0),
-            },
-            Connection {
-                input: (InputConnectionType::Input, 2),
-                output: (OutputConnectionType::Gate(Gate::NOR), 0),
-            },
-            Connection {
-                input: (InputConnectionType::Gate(Gate::NOR), 2),
-                output: (OutputConnectionType::Gate(Gate::NOR), 0),
-            },
-        ]);
-
-        let expected = HashMap::from([
-            ((Gate::NAND, 0), HashSet::from_iter(vec![
-                Connection {
-                    input: (InputConnectionType::Input, 0),
-                    output: (OutputConnectionType::Gate(Gate::NAND), 0),
-                }
-            ])),
-            ((Gate::NAND, 1), HashSet::from_iter(vec![
-                Connection {
-                    input: (InputConnectionType::Input, 0),
-                    output: (OutputConnectionType::Gate(Gate::NAND), 1),
-                }
-            ])),
-            ((Gate::NOR, 0), HashSet::from_iter(vec![
-                Connection {
-                    input: (InputConnectionType::Input, 1),
-                    output: (OutputConnectionType::Gate(Gate::NOR), 0),
-                },
-                Connection {
-                    input: (InputConnectionType::Input, 2),
-                    output: (OutputConnectionType::Gate(Gate::NOR), 0),
-                },
-                Connection {
-                    input: (InputConnectionType::Gate(Gate::NOR), 2),
-                    output: (OutputConnectionType::Gate(Gate::NOR), 0),
-                }
-            ])),
-            ((Gate::NOR, 2), HashSet::from_iter(vec![
-                Connection {
-                    input: (InputConnectionType::Gate(Gate::NOR), 2),
-                    output: (OutputConnectionType::Gate(Gate::NOR), 0),
-                }
-            ])),
-        ]);
-
-        let result = Network::collect_gates_with_connections(&connections);
 
         assert_eq!(result, expected);
     }
@@ -505,6 +498,151 @@ mod network_tests {
         let network_connections_set = HashSet::from_iter(network.connections.iter().cloned());
 
         assert_eq!(network_connections_set, cleaned_up_connections);
+    }
+
+    #[test]
+    fn get_outputs_computation_func_test() {
+        setup();
+
+        let inputs = vec![
+          true, false, false, true, true
+        ];
+
+        let expected = vec![
+          false, false, false, true, false
+        ];
+
+        let connections = HashSet::from_iter(vec![
+            Connection {
+                input: (InputConnectionType::Input, 0),
+                output: (OutputConnectionType::Gate(Gate::NAND), 0),
+            },
+            Connection {
+                input: (InputConnectionType::Input, 1),
+                output: (OutputConnectionType::Gate(Gate::NOR), 0),
+            },
+            Connection {
+                input: (InputConnectionType::Input, 2),
+                output: (OutputConnectionType::Gate(Gate::NOR), 0),
+            },
+            Connection {
+                input: (InputConnectionType::Input, 3),
+                output: (OutputConnectionType::Gate(Gate::NOR), 1),
+            },
+            Connection {
+                input: (InputConnectionType::Input, 4),
+                output: (OutputConnectionType::Output, 3),
+            },
+            Connection {
+                input: (InputConnectionType::Gate(Gate::NOR), 0),
+                output: (OutputConnectionType::Gate(Gate::NAND), 0),
+            },
+            Connection {
+                input: (InputConnectionType::Gate(Gate::NAND), 0),
+                output: (OutputConnectionType::Output, 0),
+            },
+            Connection {
+                input: (InputConnectionType::Gate(Gate::NAND), 0),
+                output: (OutputConnectionType::Gate(Gate::NOR), 1),
+            },
+            Connection {
+                input: (InputConnectionType::Gate(Gate::NOR), 1),
+                output: (OutputConnectionType::Output, 1),
+            },
+        ]);
+
+        let mut network = Network {
+            input_count: 5,
+            output_count: 5,
+            connections,
+        };
+
+        //network.clean_connections();
+
+        let output_calc_closures =  network.get_outputs_computation_func();
+
+        let result = output_calc_closures(inputs);
+
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn collect_gates_with_connections_test() {
+        setup();
+
+        let connections = HashSet::from_iter(vec![
+            Connection {
+                input: (InputConnectionType::Input, 0),
+                output: (OutputConnectionType::Output, 0),
+            },
+            Connection {
+                input: (InputConnectionType::Input, 0),
+                output: (OutputConnectionType::Output, 1),
+            },
+            Connection {
+                input: (InputConnectionType::Input, 0),
+                output: (OutputConnectionType::Output, 2),
+            },
+            Connection {
+                input: (InputConnectionType::Input, 0),
+                output: (OutputConnectionType::Gate(Gate::NAND), 0),
+            },
+            Connection {
+                input: (InputConnectionType::Input, 0),
+                output: (OutputConnectionType::Gate(Gate::NAND), 1),
+            },
+            Connection {
+                input: (InputConnectionType::Input, 1),
+                output: (OutputConnectionType::Gate(Gate::NOR), 0),
+            },
+            Connection {
+                input: (InputConnectionType::Input, 2),
+                output: (OutputConnectionType::Gate(Gate::NOR), 0),
+            },
+            Connection {
+                input: (InputConnectionType::Gate(Gate::NOR), 2),
+                output: (OutputConnectionType::Gate(Gate::NOR), 0),
+            },
+        ]);
+
+        let expected = HashMap::from([
+            ((Gate::NAND, 0), HashSet::from_iter(vec![
+                Connection {
+                    input: (InputConnectionType::Input, 0),
+                    output: (OutputConnectionType::Gate(Gate::NAND), 0),
+                }
+            ])),
+            ((Gate::NAND, 1), HashSet::from_iter(vec![
+                Connection {
+                    input: (InputConnectionType::Input, 0),
+                    output: (OutputConnectionType::Gate(Gate::NAND), 1),
+                }
+            ])),
+            ((Gate::NOR, 0), HashSet::from_iter(vec![
+                Connection {
+                    input: (InputConnectionType::Input, 1),
+                    output: (OutputConnectionType::Gate(Gate::NOR), 0),
+                },
+                Connection {
+                    input: (InputConnectionType::Input, 2),
+                    output: (OutputConnectionType::Gate(Gate::NOR), 0),
+                },
+                Connection {
+                    input: (InputConnectionType::Gate(Gate::NOR), 2),
+                    output: (OutputConnectionType::Gate(Gate::NOR), 0),
+                }
+            ])),
+            ((Gate::NOR, 2), HashSet::from_iter(vec![
+                Connection {
+                    input: (InputConnectionType::Gate(Gate::NOR), 2),
+                    output: (OutputConnectionType::Gate(Gate::NOR), 0),
+                }
+            ])),
+        ]);
+
+        let result = Network::collect_gates_with_connections(&connections);
+
+        assert_eq!(result, expected);
     }
 
     #[test]
