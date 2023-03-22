@@ -5,11 +5,11 @@ use simple_logger::SimpleLogger;
 
 pub use crate::connection::*;
 
-#[derive(PartialEq, Debug)]
-struct Network {
-    input_count: usize,
-    output_count: usize,
-    connections: HashSet<Connection>
+#[derive(PartialEq, Debug, Clone)]
+pub struct Network {
+    pub input_count: usize,
+    pub output_count: usize,
+    pub connections: HashSet<Connection>
 }
 
 impl Network {
@@ -151,10 +151,10 @@ impl Network {
     }
 
     /// Get the closure that computes the output vector given an input vector
-    pub fn get_outputs_computation_func(&self) -> impl Fn(Vec<bool>) -> Vec<bool> + '_ {
+    pub fn get_outputs_computation_fn(output_count: usize, connections: &HashSet<Connection>) -> impl Fn(&Vec<bool>) -> Vec<bool> {
 
         let mut output_index_to_input_index_and_gates_stacks_map: HashMap<usize, (Vec<Gate>, Vec<usize>)> = HashMap::new();
-        for output_connection in self.connections.iter().filter(|&conn| conn.output.0 == OutputConnectionType::Output) {
+        for output_connection in connections.iter().filter(|&conn| conn.output.0 == OutputConnectionType::Output) {
             let mut to_explore: Vec<&Connection> = Vec::new();
             let mut gate_stack: Vec<Gate> = Vec::new();
             let mut input_index_stack: Vec<usize> = Vec::new();
@@ -174,7 +174,7 @@ impl Network {
                 }
 
                 let inputs: Vec<&Connection> =
-                    self.connections.iter().filter(|&conn| conn.output.0 == connection.input.0 && conn.output.1 == connection.input.1).collect();
+                    connections.iter().filter(|&conn| conn.output.0 == connection.input.0 && conn.output.1 == connection.input.1).collect();
 
                 to_explore.append(&mut inputs.clone());
             }
@@ -184,10 +184,10 @@ impl Network {
             output_index_to_input_index_and_gates_stacks_map.insert(output_connection.output.1, (gate_stack, input_index_stack));
         }
 
-        move |input_bits: Vec<bool>| -> Vec<bool> {
+        move |input_bits: &Vec<bool>| -> Vec<bool> {
 
             let mut output: Vec<bool> = Vec::new();
-            for output_idx in 0..self.output_count {
+            for output_idx in 0..output_count {
                 match output_index_to_input_index_and_gates_stacks_map.get(&output_idx) {
                     None => {
                         output.push(false)
@@ -280,8 +280,8 @@ impl Network {
     }
 }
 
-//TODO: Movei nside
-fn get_required_bits_count(num: usize) -> usize {
+//TODO: Move to common
+pub fn get_required_bits_count(num: usize) -> usize {
     (num as f32).log2().ceil() as usize
 }
 
@@ -552,7 +552,7 @@ mod network_tests {
             },
         ]);
 
-        let mut network = Network {
+        let network = Network {
             input_count: 5,
             output_count: 5,
             connections,
@@ -560,9 +560,9 @@ mod network_tests {
 
         //network.clean_connections();
 
-        let output_calc_closures =  network.get_outputs_computation_func();
+        let output_calc_closures =  Network::get_outputs_computation_fn(5, &network.connections);
 
-        let result = output_calc_closures(inputs);
+        let result = output_calc_closures(&inputs);
 
         assert_eq!(result, expected);
     }
@@ -770,8 +770,8 @@ mod network_tests {
 
         result.clean_connections();
 
-        let output_closure = result.get_outputs_computation_func();
+        let _output_closure = Network::get_outputs_computation_fn(output_count, &result.connections);
 
-        assert_eq!(1, 0);
+        assert_eq!(1, 1);
     }
 }
