@@ -59,6 +59,7 @@ impl Network {
         let mut input_counts: HashMap<(OutputConnectionType, usize), usize> = HashMap::new();
         while ind < connections_binary.len() {
             let connection_with_len = Connection::from_bitstring(&connections_binary[ind..], input_count, output_count, nand_count, nor_count, connection_index_bits_count);
+            debug!("[IDX: {}] Processing from binary connection: {:?}", ind, connection_with_len);
             match connection_with_len {
                 Some(connection) => {
                     let output = connection.output.clone();
@@ -81,12 +82,12 @@ impl Network {
                             }
                         }
                     }
-                    ind = ind + connection_bits_count
                 }
                 None => {
                     none_connection_count = none_connection_count + 1;
                 }
             }
+            ind = ind + connection_bits_count;
         }
 
         debug!("Connections which couldn't be built from binary count: {}", none_connection_count);
@@ -712,5 +713,65 @@ mod network_tests {
 
         assert_eq!(result_1, expected_1);
         assert_eq!(result_2, expected_2);
+    }
+
+    #[test]
+    fn from_bitstring_big_test() {
+        setup();
+        let input_count = 200;
+        let output_count = 100;
+
+        let expected_network_str = [
+            "10100000",
+            "01001100",
+            "00101000011010111100",
+            "01110110100000100010",
+            "10011011011110001010",
+            "01001110001010100101",
+            "00100110111001011000",
+            "10111101011101001100",
+            "10010000110100010001",
+            "01101110010101111000",
+            "01100001001100011000",
+            "10011100011110100001",
+            "00011011010101001111",
+            "01001010110000100100",
+            "11001111001010111001",
+            "00101111100101000010",
+            "10111001101010000000",
+            "10100100010111100011",
+            "00000011010100100000",
+            "10111110110110001010",
+            "11111000110101110000",
+            "10100100001010101100",
+            "11010101010111011100",
+            "11011101010100001111",
+            "00000111010000010011",
+            "01000001101000010001",
+            "00010000010100100011",
+            "00000010011111001101",
+            "10110000011100111111",
+            "00100101011011010101",
+            "01000111111011100001",
+            "01001111001000100110",
+            "10001110100101011001",
+            "00110010000000011100",
+            "11010010000111000011",
+            "00010001101001001101",
+            "01010101110100110001",
+            "10111111001101001110",
+            "11011000111101010100",
+            "00101001101001001100",
+            "11001001110111100011",
+            "01000101010111111100"
+        ].join("");
+
+        let mut result = Network::from_bitstring(&expected_network_str, input_count, output_count, 8, 8).unwrap();
+
+        result.clean_connections();
+
+        let output_closure = result.get_outputs_computation_func();
+
+        assert_eq!(1, 0);
     }
 }
