@@ -305,6 +305,7 @@ mod network_tests {
         assert_eq!(get_required_bits_count(12), 4);
         assert_eq!(get_required_bits_count(2), 1);
         assert_eq!(get_required_bits_count(100), 7);
+        assert_eq!(get_required_bits_count(66), 7);
     }
 
     #[test]
