@@ -1,8 +1,6 @@
 extern crate core;
 
-mod network;
-mod connection;
-mod smart_network;
+mod network_logic;
 
 fn main() {
     println!("Hello, world!");

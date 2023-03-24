@@ -1,9 +1,8 @@
 use std::collections::{HashMap, HashSet};
-
 use log::debug;
 use simple_logger::SimpleLogger;
 
-pub use crate::connection::*;
+use super::connection::*;
 
 #[derive(PartialEq, Debug, Clone)]
 pub struct Network {
@@ -179,12 +178,14 @@ impl Network {
                 to_explore.append(&mut inputs.clone());
             }
 
-            debug!("Finished for connection {}, gate stack: {:?}, index stack: {:?}", output_connection, gate_stack, input_index_stack);
+            debug!("get_outputs_computation_fn: Finished for connection {}, gate stack: {:?}, index stack: {:?}", output_connection, gate_stack, input_index_stack);
 
             output_index_to_input_index_and_gates_stacks_map.insert(output_connection.output.1, (gate_stack, input_index_stack));
         }
 
         move |input_bits: &Vec<bool>| -> Vec<bool> {
+
+            debug!("Calculate output for input: {:?}", input_bits);
 
             let mut output: Vec<bool> = Vec::new();
             for output_idx in 0..output_count {
@@ -217,6 +218,7 @@ impl Network {
                     }
                 }
             }
+            debug!("Output: {:?}", output);
             output
         }
     }

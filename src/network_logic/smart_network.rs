@@ -1,6 +1,8 @@
 use std::collections::{HashMap, HashSet};
 use log::debug;
-pub use crate::network::*;
+
+use super::network::*;
+use super::connection::*;
 
 struct SmartNetwork {
     network: Network,
@@ -19,9 +21,9 @@ impl SmartNetwork {
 
         let mut network = Network::from_bitstring(s, total_input_count, total_output_count, nand_count_bits, nor_count_bits).unwrap().clone();
 
-        let output_fn = Box::new(Network::get_outputs_computation_fn(total_output_count, &network.connections));
-
         network.clean_connections();
+
+        let output_fn = Box::new(Network::get_outputs_computation_fn(total_output_count, &network.connections));
 
         SmartNetwork {
             network,
@@ -51,37 +53,37 @@ impl SmartNetwork {
         nand_count_bits + nor_count_bits + (connection_count * connection_bits_count)
     }
 
-    pub fn compute_output(&mut self, input: &Vec<bool>) -> Vec<bool> {
+    pub fn compute_output(&mut self, input: &[bool]) -> Vec<bool> {
 
         let network_output_fn = self.get_network_output_fn.as_ref();
-        //TODO: Create full input vec = input + mem output
         let mut full_input: Vec<bool> = Vec::new();
 
         full_input.extend(input);
-        full_input.extend(&self.current_memory_output.clone().unwrap_or(vec![]));
-
-/*        if full_input.len() != self.network.input_count {
-            panic!("Input + memory bits len isn't equal to underlying network input len");
-        }*/
+        full_input.extend(&self.current_memory_output.clone().unwrap_or(vec![false; self.memory_rw_input_count]));
 
         let network_output: Vec<bool> = network_output_fn(&full_input);
 
-        let mem_input_start_idx = network_output.len() - (2 * self.memory_addr_input_count) - self.memory_rw_input_count;
-        let mem_output_addr_idx = mem_input_start_idx;
-        let mem_input_addr_idx = mem_input_start_idx + self.memory_addr_input_count;
-        let mem_input_idx = mem_input_addr_idx + self.memory_rw_input_count;
+        //The first index of the first output that controls the memory
+        let outputs_count_without_memory = network_output.len() - (2 * self.memory_addr_input_count) - self.memory_rw_input_count;
+        let mem_inputs_start_idx = outputs_count_without_memory;
+        //The indexes of the outputs for
+        let mem_output_addr_idx = mem_inputs_start_idx;
+        let mem_input_addr_idx = mem_output_addr_idx + self.memory_addr_input_count;
+        let mem_input_idx = mem_input_addr_idx + self.memory_addr_input_count;
 
         let mem_output_addr = &network_output[mem_output_addr_idx..(mem_output_addr_idx + self.memory_addr_input_count)];
         let mem_input_addr = &network_output[mem_input_addr_idx..(mem_input_addr_idx + self.memory_addr_input_count)];
         let mem_input = &network_output[mem_input_idx..(mem_input_idx + self.memory_rw_input_count)];
 
-        //Output | Output mem addr | Input mem addr | Mem input
-        //TODO: Put output into memory based on addr values, select curr mem output based on address
-
+        //Whole output = Output | Output mem addr | Input mem addr | Mem input
         self.current_memory_output = self.memory.get(mem_output_addr).cloned();
         self.memory.insert(Vec::from(mem_input_addr), Vec::from(mem_input));
 
-        network_output
+        debug!("Memory after compute: {:?}", self.memory);
+        debug!("Memory output for next compute: {:?}", self.current_memory_output);
+
+        let mut final_output: Vec<bool> = network_output.iter().take(outputs_count_without_memory).cloned().collect();
+        final_output
     }
 }
 
@@ -126,38 +128,84 @@ mod smart_network_tests {
         assert_eq!(result, 3632)
     }
 
-/*    #[test]
+    #[test]
     fn compute_output_test() {
 
         let mut network = Network {
             input_count: 4,
-            output_count: 4,
+            output_count: 6,
             connections: HashSet::from_iter(vec![
-
+                Connection {
+                    input: (InputConnectionType::Input, 0),
+                    output: (OutputConnectionType::Gate(Gate::NAND), 0),
+                },
+                Connection {
+                    input: (InputConnectionType::Input, 1),
+                    output: (OutputConnectionType::Gate(Gate::NAND), 0),
+                },
+                Connection {
+                    input: (InputConnectionType::Input, 1),
+                    output: (OutputConnectionType::Gate(Gate::NAND), 1),
+                },
+                Connection {
+                    input: (InputConnectionType::Input, 2),
+                    output: (OutputConnectionType::Gate(Gate::NAND), 1),
+                },
+                Connection {
+                    input: (InputConnectionType::Input, 3),
+                    output: (OutputConnectionType::Output, 5),
+                },
+                Connection {
+                    input: (InputConnectionType::Gate(Gate::NAND), 0),
+                    output: (OutputConnectionType::Output, 0),
+                },
+                Connection {
+                    input: (InputConnectionType::Gate(Gate::NAND), 1),
+                    output: (OutputConnectionType::Output, 1),
+                },
+                Connection {
+                    input: (InputConnectionType::Gate(Gate::NAND), 1),
+                    output: (OutputConnectionType::Output, 2),
+                },
+                Connection {
+                    input: (InputConnectionType::Gate(Gate::NAND), 1),
+                    output: (OutputConnectionType::Output, 3),
+                },
+                Connection {
+                    input: (InputConnectionType::Gate(Gate::NAND), 1),
+                    output: (OutputConnectionType::Output, 4),
+                },
             ]),
         };
 
         network.clean_connections();
 
-        //TODO: Set the output func
-        let total_output_count = 16;
+        let total_output_count = 6;
         let output_fn = Box::new(Network::get_outputs_computation_fn(total_output_count, &network.connections));
 
         let mut smart_network = SmartNetwork {
             network,
-            memory_addr_input_count: 2,
-            memory_rw_input_count: 4,
+            memory_addr_input_count: 1,
+            memory_rw_input_count: 2,
             get_network_output_fn: output_fn,
             memory: HashMap::new(),
             current_memory_output: None,
         };
 
-        let input = vec![
+        let input_1 = vec![true, false];
+        let input_2 = vec![true, true];
+        let input_3 = vec![true, true];
 
-        ];
+        let expected_1 = vec![true, true];
+        let expected_2 = vec![false, true];
+        let expected_3 = vec![false, false];
 
-        //let result = smart_network.compute_output()
+        let result_1 = smart_network.compute_output(&input_1);
+        let result_2 = smart_network.compute_output(&input_2);
+        let result_3 = smart_network.compute_output(&input_3);
 
-        assert_eq!(1, 2)
-    }*/
+        assert_eq!(result_1, expected_1);
+        assert_eq!(result_2, expected_2);
+        assert_eq!(result_3, expected_3);
+    }
 }
