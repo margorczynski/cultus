@@ -82,8 +82,7 @@ impl SmartNetwork {
         debug!("Memory after compute: {:?}", self.memory);
         debug!("Memory output for next compute: {:?}", self.current_memory_output);
 
-        let mut final_output: Vec<bool> = network_output.iter().take(outputs_count_without_memory).cloned().collect();
-        final_output
+        network_output.iter().take(outputs_count_without_memory).cloned().collect()
     }
 }
 
