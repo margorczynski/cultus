@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use rand::prelude::*;
+use std::cmp::Ordering;
 
 
 pub type BinaryChromosome = Vec<bool>;
@@ -14,7 +15,7 @@ pub fn generate_initial_population(initial_population_count: usize, chromosome_s
 
     let mut population: HashSet<BinaryChromosome> = HashSet::new();
 
-    for i in 0..initial_population_count {
+    for _ in 0..initial_population_count {
         let random_chromosome: BinaryChromosome = (0..chromosome_size).map(|_| rng.gen::<bool>()).collect();
 
         population.insert(random_chromosome);
@@ -23,28 +24,35 @@ pub fn generate_initial_population(initial_population_count: usize, chromosome_s
     population
 }
 
-pub fn evolve(chromosomes_with_fitness: &HashSet<BinaryChromosomeWithFitness>, generations_count_limit: Option<usize>, selection_strategy: SelectionStrategy) -> HashSet<BinaryChromosome> {
-    let mut generation_count: usize = 0;
+pub fn evolve(chromosomes_with_fitness: &HashSet<BinaryChromosomeWithFitness>, selection_strategy: SelectionStrategy, mutation_rate: f32, elite_factor: f32) -> HashSet<BinaryChromosome> {
     let mut new_generation: HashSet<BinaryChromosome> = HashSet::new();
-    loop {
 
-        //TODO: Implement - selection, crossover
+    let elite_amount = ((chromosomes_with_fitness.len() as f32) * elite_factor).floor() as usize;
 
-        generation_count = generation_count + 1;
+    let mut chromosomes_with_fitness_ordered: Vec<BinaryChromosomeWithFitness> = chromosomes_with_fitness.into_iter().cloned().collect();
 
-        match generations_count_limit {
-            None => {}
-            Some(limit) => if generation_count >= limit {
-                break
-            }
-        }
+    chromosomes_with_fitness_ordered.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
+
+    let elite: HashSet<BinaryChromosome> = chromosomes_with_fitness_ordered.iter().rev().take(elite_amount).cloned().map(|cwf| cwf.0).collect();
+
+    new_generation.extend(elite);
+
+    let select_crossover_iteration_amount = (chromosomes_with_fitness.len() - elite_amount) / 2;
+
+    for _ in 0..select_crossover_iteration_amount {
+        let parents = select(chromosomes_with_fitness, &selection_strategy);
+
+        let offspring = crossover(parents, 1.0f32, mutation_rate);
+
+        new_generation.insert(offspring.0);
+        new_generation.insert(offspring.1);
     }
 
     new_generation
 }
 
-fn select(chromosomes_with_fitness: &HashSet<BinaryChromosomeWithFitness>, selection_strategy: SelectionStrategy) -> (BinaryChromosome, BinaryChromosome) {
-    match selection_strategy {
+fn select(chromosomes_with_fitness: &HashSet<BinaryChromosomeWithFitness>, selection_strategy: &SelectionStrategy) -> (BinaryChromosome, BinaryChromosome) {
+    match *selection_strategy {
         SelectionStrategy::Tournament(tournament_size) => {
             //TODO: If chromosomes.len = 0 OR tournament_size > chromosomes.len -> panic
             let get_winner = |chromosomes_with_fitness: &Vec<BinaryChromosomeWithFitness>|
@@ -57,7 +65,7 @@ fn select(chromosomes_with_fitness: &HashSet<BinaryChromosomeWithFitness>, selec
 
             let mut chromosomes_vec = Vec::from_iter(chromosomes_with_fitness.clone());
 
-            //TODO: Doesn't guarantee that the same element won't be selected twice
+            chromosomes_vec.shuffle(&mut thread_rng());
             let first = get_winner(&chromosomes_vec);
             chromosomes_vec.shuffle(&mut thread_rng());
             let second = get_winner(&chromosomes_vec);
@@ -67,7 +75,7 @@ fn select(chromosomes_with_fitness: &HashSet<BinaryChromosomeWithFitness>, selec
     }
 }
 
-fn crossover(parents: (BinaryChromosome, BinaryChromosome), crossover_rate: f32, mutation_rate: f32) -> (BinaryChromosome, BinaryChromosome) {
+fn crossover(parents: (BinaryChromosome, BinaryChromosome), _crossover_rate: f32, mutation_rate: f32) -> (BinaryChromosome, BinaryChromosome) {
     let mut rng = rand::thread_rng();
 
     let crossover_point = rng.gen_range(1..(parents.0.len() - 1));

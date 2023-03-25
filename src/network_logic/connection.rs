@@ -17,6 +17,7 @@ impl Connection {
         let input_type_binary = &s[0..2];
         let input_type_decimal = u32::from_str_radix(input_type_binary, 2).unwrap();
 
+        //TODO: Input/output type - should 11 be a viable state?
         let input_type = match input_type_decimal {
             0 => InputConnectionType::Input,
             1 => InputConnectionType::Gate(Gate::NAND),
