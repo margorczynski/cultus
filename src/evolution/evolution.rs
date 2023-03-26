@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 use rand::prelude::*;
 use log::debug;
-use crate::evolution_logic::chromosome::Chromosome;
-use crate::evolution_logic::chromosome_with_fitness::ChromosomeWithFitness;
+use crate::evolution::chromosome::Chromosome;
+use crate::evolution::chromosome_with_fitness::ChromosomeWithFitness;
 
 #[derive(Debug)]
 pub enum SelectionStrategy {
@@ -82,7 +82,7 @@ fn select<T: PartialEq + PartialOrd + Clone>(chromosomes_with_fitness: &HashSet<
 }
 
 fn crossover(parents: (Chromosome, Chromosome), _crossover_rate: f32, mutation_rate: f32) -> (Chromosome, Chromosome) {
-    let mut rng = rand::thread_rng();
+    let mut rng = thread_rng();
 
     let crossover_point = rng.gen_range(1..(parents.0.genes.len() - 1));
 

@@ -1,7 +1,7 @@
 extern crate core;
 
-mod network_logic;
-mod evolution_logic;
+mod smart_network;
+mod evolution;
 mod common;
 
 fn main() {

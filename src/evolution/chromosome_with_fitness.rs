@@ -1,5 +1,5 @@
 use std::cmp::Ordering;
-use crate::evolution_logic::chromosome::Chromosome;
+use crate::evolution::chromosome::Chromosome;
 
 #[derive(Hash, Clone)]
 pub struct ChromosomeWithFitness<T: Clone> {
