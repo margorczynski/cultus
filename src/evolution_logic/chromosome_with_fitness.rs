@@ -8,6 +8,13 @@ pub struct ChromosomeWithFitness<T: Clone> {
 }
 
 impl<T: Clone> ChromosomeWithFitness<T> {
+    pub fn from_chromosome_and_fitness(chromosome: Chromosome, fitness: T) -> ChromosomeWithFitness<T> {
+        ChromosomeWithFitness {
+            chromosome,
+            fitness
+        }
+    }
+
     pub fn from_bitstring(s: &str, fitness: T) -> ChromosomeWithFitness<T> {
         let chromosome = Chromosome::from_bitstring(s);
 

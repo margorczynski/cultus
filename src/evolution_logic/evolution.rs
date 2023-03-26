@@ -70,6 +70,7 @@ fn select<T: PartialEq + PartialOrd + Clone>(chromosomes_with_fitness: &HashSet<
             chromosomes_vec.shuffle(&mut thread_rng());
             let first = get_winner(&chromosomes_vec);
             chromosomes_vec.shuffle(&mut thread_rng());
+            chromosomes_vec.retain(|ch| *ch != first);
             let second = get_winner(&chromosomes_vec);
 
             (first.chromosome, second.chromosome)
@@ -129,21 +130,22 @@ mod evolution_tests {
 
     #[test]
     fn select_test() {
-/*        let selection_strategy = SelectionStrategy::Tournament(5);
+        let selection_strategy = SelectionStrategy::Tournament(5);
         let chromosomes_with_fitness = HashSet::from_iter(vec![
-            (vec![true, false, false, false], 10.0),
-            (vec![false, true, false, false], 15.0),
-            (vec![false, false, true, false], 20.0),
-            (vec![false, false, false, true], 25.0),
-            (vec![true, true, true, true], 30.0)
+            ChromosomeWithFitness::from_chromosome_and_fitness(Chromosome::from_genes(vec![true, false, false, false]), 10),
+
+            ChromosomeWithFitness::from_chromosome_and_fitness(Chromosome::from_genes(vec![false, true, false, false]), 15),
+            ChromosomeWithFitness::from_chromosome_and_fitness(Chromosome::from_genes(vec![false, false, true, false]), 20),
+            ChromosomeWithFitness::from_chromosome_and_fitness(Chromosome::from_genes(vec![false, false, false, true]), 25),
+            ChromosomeWithFitness::from_chromosome_and_fitness(Chromosome::from_genes(vec![true, true, true, true]), 30)
         ]);
 
         let result = select(&chromosomes_with_fitness, &selection_strategy);
 
-        let results_set = HashSet::from_iter(vec![result.0, result.1]);
+        let results_set: HashSet<Chromosome> = HashSet::from_iter(vec![result.0, result.1]);
 
-        assert!(results_set.contains(&vec![true, true, true, true]));
-        assert!(results_set.contains(&vec![false, false, false, true]));*/
+        assert!(results_set.contains(&Chromosome::from_genes(vec![true, true, true, true])));
+        assert!(results_set.contains(&Chromosome::from_genes(vec![false, false, false, true])));
     }
 
     #[test]
