@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use rand::prelude::*;
 use std::cmp::Ordering;
+use log::debug;
 
 
 pub type BinaryChromosome = Vec<bool>;
@@ -11,8 +12,9 @@ pub enum SelectionStrategy {
 }
 
 pub fn generate_initial_population(initial_population_count: usize, chromosome_size: usize) -> HashSet<BinaryChromosome> {
-    let mut rng = rand::thread_rng();
+    debug!("Generating initial population - initial_population_count: {}, chromosome_size: {}", initial_population_count, chromosome_size);
 
+    let mut rng = rand::thread_rng();
     let mut population: HashSet<BinaryChromosome> = HashSet::new();
 
     for _ in 0..initial_population_count {
@@ -107,4 +109,51 @@ fn crossover(parents: (BinaryChromosome, BinaryChromosome), _crossover_rate: f32
     }
 
     (fst_child, snd_child)
+}
+
+#[cfg(test)]
+mod evolution_tests {
+    use super::*;
+
+    #[test]
+    fn generate_initial_population_test() {
+        let result = generate_initial_population(100, 50);
+
+        assert_eq!(result.len(), 100);
+        assert!(result.iter().all(|c| c.len() == 50));
+    }
+
+    #[test]
+    fn evolve_test() {
+    }
+
+    #[test]
+    fn select_test() {
+/*        let selection_strategy = SelectionStrategy::Tournament(5);
+        let chromosomes_with_fitness = HashSet::from_iter(vec![
+            (vec![true, false, false, false], 10.0),
+            (vec![false, true, false, false], 15.0),
+            (vec![false, false, true, false], 20.0),
+            (vec![false, false, false, true], 25.0),
+            (vec![true, true, true, true], 30.0)
+        ]);
+
+        let result = select(&chromosomes_with_fitness, &selection_strategy);
+
+        let results_set = HashSet::from_iter(vec![result.0, result.1]);
+
+        assert!(results_set.contains(&vec![true, true, true, true]));
+        assert!(results_set.contains(&vec![false, false, false, true]));*/
+    }
+
+    #[test]
+    fn crossover_test() {
+        let parent_1 = vec![true, true, false, false, true];
+        let parent_2 = vec![false, false, true, false, true];
+
+        let result = crossover((parent_1, parent_2), 1.0, 0.05);
+
+        assert_eq!(result.0.len(), 5);
+        assert_eq!(result.1.len(), 5);
+    }
 }
