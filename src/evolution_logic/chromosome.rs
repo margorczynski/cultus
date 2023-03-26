@@ -1,4 +1,4 @@
-use std::fmt::{Display, Formatter};
+use std::fmt::{Display, Debug, Formatter};
 
 #[derive(Hash, PartialEq, Eq, Clone)]
 pub struct Chromosome {
@@ -35,5 +35,11 @@ impl Display for Chromosome {
         let result: String = self.genes.iter().map(|&g| if g {'1'} else {'0'}).collect();
 
         write!(f, "{}", result)
+    }
+}
+
+impl Debug for Chromosome {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        write!(f, "{}", self)
     }
 }

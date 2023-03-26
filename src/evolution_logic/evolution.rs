@@ -4,7 +4,7 @@ use log::debug;
 use crate::evolution_logic::chromosome::Chromosome;
 use crate::evolution_logic::chromosome_with_fitness::ChromosomeWithFitness;
 
-
+#[derive(Debug)]
 pub enum SelectionStrategy {
     Tournament(usize)
 }
@@ -27,9 +27,12 @@ pub fn generate_initial_population(initial_population_count: usize, chromosome_s
 }
 
 pub fn evolve<T: PartialEq + PartialOrd + Clone>(chromosomes_with_fitness: &HashSet<ChromosomeWithFitness<T>>, selection_strategy: SelectionStrategy, mutation_rate: f32, elite_factor: f32) -> HashSet<Chromosome> {
+    debug!("Evolve new generation - chromosomes_with_fitness.len(): {}, selection_strategy: {:?}, mutation_rate: {}, elite_factor: {}", chromosomes_with_fitness.len(), selection_strategy, mutation_rate, elite_factor);
     let mut new_generation: HashSet<Chromosome> = HashSet::new();
 
     let elite_amount = ((chromosomes_with_fitness.len() as f32) * elite_factor).floor() as usize;
+
+    debug!("Elite amount: {}", elite_amount);
 
     let mut chromosomes_with_fitness_ordered: Vec<ChromosomeWithFitness<T>> = chromosomes_with_fitness.into_iter().cloned().collect();
 
@@ -39,9 +42,7 @@ pub fn evolve<T: PartialEq + PartialOrd + Clone>(chromosomes_with_fitness: &Hash
 
     new_generation.extend(elite);
 
-    let select_crossover_iteration_amount = (chromosomes_with_fitness.len() - elite_amount) / 2;
-
-    for _ in 0..select_crossover_iteration_amount {
+    while new_generation.len() < chromosomes_with_fitness.len() {
         let parents = select(chromosomes_with_fitness, &selection_strategy);
 
         let offspring = crossover(parents, 1.0f32, mutation_rate);
@@ -50,7 +51,9 @@ pub fn evolve<T: PartialEq + PartialOrd + Clone>(chromosomes_with_fitness: &Hash
         new_generation.insert(offspring.1);
     }
 
-    new_generation
+    debug!("Total number of chromosomes after crossovers (+ elites retained): {}", new_generation.len());
+
+    new_generation.iter().take(chromosomes_with_fitness.len()).cloned().collect()
 }
 
 fn select<T: PartialEq + PartialOrd + Clone>(chromosomes_with_fitness: &HashSet<ChromosomeWithFitness<T>>, selection_strategy: &SelectionStrategy) -> (Chromosome, Chromosome) {
@@ -115,9 +118,11 @@ fn crossover(parents: (Chromosome, Chromosome), _crossover_rate: f32, mutation_r
 #[cfg(test)]
 mod evolution_tests {
     use super::*;
+    use crate::common::*;
 
     #[test]
     fn generate_initial_population_test() {
+        setup();
         let result = generate_initial_population(100, 50);
 
         assert_eq!(result.len(), 100);
@@ -126,14 +131,31 @@ mod evolution_tests {
 
     #[test]
     fn evolve_test() {
+        setup();
+        let selection_strategy = SelectionStrategy::Tournament(4);
+        let chromosomes_with_fitness = HashSet::from_iter(vec![
+            ChromosomeWithFitness::from_chromosome_and_fitness(Chromosome::from_genes(vec![true, true, true, false]), 0),
+            ChromosomeWithFitness::from_chromosome_and_fitness(Chromosome::from_genes(vec![true, false, false, false]), 10),
+            ChromosomeWithFitness::from_chromosome_and_fitness(Chromosome::from_genes(vec![false, true, false, false]), 15),
+            ChromosomeWithFitness::from_chromosome_and_fitness(Chromosome::from_genes(vec![false, false, true, false]), 20),
+            ChromosomeWithFitness::from_chromosome_and_fitness(Chromosome::from_genes(vec![false, false, false, true]), 25),
+            ChromosomeWithFitness::from_chromosome_and_fitness(Chromosome::from_genes(vec![true, true, true, true]), 30),
+            ChromosomeWithFitness::from_chromosome_and_fitness(Chromosome::from_genes(vec![false, false, false, false]), 40)
+        ]);
+
+        let result = evolve(&chromosomes_with_fitness, selection_strategy, 0.5, 0.35);
+
+        assert_eq!(result.len(), 7);
+        assert!(result.contains(&Chromosome::from_genes(vec![true, true, true, true])));
+        assert!(result.contains(&Chromosome::from_genes(vec![false, false, false, false])));
     }
 
     #[test]
     fn select_test() {
+        setup();
         let selection_strategy = SelectionStrategy::Tournament(5);
         let chromosomes_with_fitness = HashSet::from_iter(vec![
             ChromosomeWithFitness::from_chromosome_and_fitness(Chromosome::from_genes(vec![true, false, false, false]), 10),
-
             ChromosomeWithFitness::from_chromosome_and_fitness(Chromosome::from_genes(vec![false, true, false, false]), 15),
             ChromosomeWithFitness::from_chromosome_and_fitness(Chromosome::from_genes(vec![false, false, true, false]), 20),
             ChromosomeWithFitness::from_chromosome_and_fitness(Chromosome::from_genes(vec![false, false, false, true]), 25),
@@ -150,6 +172,7 @@ mod evolution_tests {
 
     #[test]
     fn crossover_test() {
+        setup();
         let parent_1 = Chromosome::from_genes(vec![true, true, false, false, true]);
         let parent_2 = Chromosome::from_genes(vec![false, false, true, false, true]);
 

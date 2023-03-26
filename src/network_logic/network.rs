@@ -1,6 +1,5 @@
 use std::collections::{HashMap, HashSet};
 use log::debug;
-use simple_logger::SimpleLogger;
 
 use super::connection::*;
 
@@ -289,16 +288,8 @@ pub fn get_required_bits_count(num: usize) -> usize {
 
 #[cfg(test)]
 mod network_tests {
-    use std::sync::Once;
     use super::*;
-
-    static INIT: Once = Once::new();
-
-    fn setup() {
-        INIT.call_once(|| {
-            SimpleLogger::new().init().unwrap();
-        });
-    }
+    use crate::common::*;
 
     #[test]
     fn get_required_bits_count_test() {
