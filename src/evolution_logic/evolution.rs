@@ -100,14 +100,14 @@ fn crossover(parents: (Chromosome, Chromosome), _crossover_rate: f32, mutation_r
 
     for idx in 0..fst_child_genes.len() {
         let rnd: f32 = rng.gen();
-        if rnd <= mutation_rate {
+        if rnd < mutation_rate {
             fst_child_genes[idx] = !fst_child_genes[idx];
         }
     }
 
     for idx in 0..snd_child_genes.len() {
         let rnd: f32 = rng.gen();
-        if rnd <= mutation_rate {
+        if rnd < mutation_rate {
             snd_child_genes[idx] = !snd_child_genes[idx];
         }
     }
