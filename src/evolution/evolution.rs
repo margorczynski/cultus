@@ -42,18 +42,19 @@ pub fn evolve<T: PartialEq + PartialOrd + Clone>(chromosomes_with_fitness: &Hash
 
     new_generation.extend(elite);
 
-    while new_generation.len() < chromosomes_with_fitness.len() {
+    while new_generation.len() != chromosomes_with_fitness.len() {
         let parents = select(chromosomes_with_fitness, &selection_strategy);
 
         let offspring = crossover(parents, 1.0f32, mutation_rate);
 
         new_generation.insert(offspring.0);
+        if new_generation.len() == chromosomes_with_fitness.len() {break}
         new_generation.insert(offspring.1);
     }
 
     debug!("Total number of chromosomes after crossovers (+ elites retained): {}", new_generation.len());
 
-    new_generation.iter().take(chromosomes_with_fitness.len()).cloned().collect()
+    new_generation
 }
 
 fn select<T: PartialEq + PartialOrd + Clone>(chromosomes_with_fitness: &HashSet<ChromosomeWithFitness<T>>, selection_strategy: &SelectionStrategy) -> (Chromosome, Chromosome) {
@@ -144,6 +145,8 @@ mod evolution_tests {
         ]);
 
         let result = evolve(&chromosomes_with_fitness, selection_strategy, 0.5, 0.35);
+
+        debug!("Evo test result: {:?}", result);
 
         assert_eq!(result.len(), 7);
         assert!(result.contains(&Chromosome::from_genes(vec![true, true, true, true])));
