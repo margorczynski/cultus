@@ -1,10 +1,18 @@
 use std::fmt::{Display, Formatter};
 
+#[derive(Hash, PartialEq, Eq, Clone)]
 pub struct Chromosome {
-    genes: Vec<bool>
+    pub genes: Vec<bool>
 }
 
 impl Chromosome {
+
+    pub fn from_genes(genes: Vec<bool>) -> Chromosome {
+        Chromosome {
+            genes
+        }
+    }
+
     pub fn from_bitstring(s: &str) -> Chromosome {
         let mut genes: Vec<bool> = Vec::new();
 

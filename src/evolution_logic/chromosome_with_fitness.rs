@@ -1,12 +1,13 @@
 use std::cmp::Ordering;
 use crate::evolution_logic::chromosome::Chromosome;
 
-pub struct ChromosomeWithFitness<T> {
-    chromosome: Chromosome,
+#[derive(Hash, Clone)]
+pub struct ChromosomeWithFitness<T: Clone> {
+    pub chromosome: Chromosome,
     fitness: T
 }
 
-impl<T> ChromosomeWithFitness<T> {
+impl<T: Clone> ChromosomeWithFitness<T> {
     pub fn from_bitstring(s: &str, fitness: T) -> ChromosomeWithFitness<T> {
         let chromosome = Chromosome::from_bitstring(s);
 
@@ -17,16 +18,22 @@ impl<T> ChromosomeWithFitness<T> {
     }
 }
 
-impl<T: PartialEq> PartialEq for ChromosomeWithFitness<T> {
+impl<T: PartialEq + Clone> PartialEq for ChromosomeWithFitness<T> {
     fn eq(&self, other: &Self) -> bool {
         T::eq(&self.fitness, &other.fitness)
     }
 }
 
-impl<T: PartialEq> Eq for ChromosomeWithFitness<T> {}
+impl<T: PartialEq + Clone> Eq for ChromosomeWithFitness<T> {}
 
-impl<T: PartialOrd> PartialOrd  for ChromosomeWithFitness<T> {
+impl<T: PartialOrd + Clone> PartialOrd for ChromosomeWithFitness<T> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         T::partial_cmp(&self.fitness, &other.fitness)
+    }
+}
+
+impl<T: PartialOrd + Clone> Ord for ChromosomeWithFitness<T> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.partial_cmp(&other).unwrap_or(Ordering::Equal)
     }
 }
