@@ -40,11 +40,11 @@ impl Level {
     }
 
     pub fn get_size_rows(&self) -> usize {
-        self.position_to_game_object_map.iter().map(|e| e.0.row).max().unwrap()
+        self.position_to_game_object_map.iter().map(|e| e.0.row).max().unwrap() + 1
     }
 
     pub fn get_size_column(&self) -> usize {
-        self.position_to_game_object_map.iter().map(|e| e.0.column).max().unwrap()
+        self.position_to_game_object_map.iter().map(|e| e.0.column).max().unwrap() + 1
     }
 
     pub fn get_point_amount(&self) -> usize {
@@ -55,30 +55,37 @@ impl Level {
         }).sum()
     }
 
-    pub fn get_game_object_at(&self, position: Position) -> Option<&GameObject> {
+    pub fn get_game_object_at(&self, position: &Position) -> Option<&GameObject> {
         self.position_to_game_object_map.get(&position)
-    }
-
-    pub fn update_game_object_at(&mut self, position: &Position, new_game_object: &GameObject) -> bool {
-        self.position_to_game_object_map.insert(position.clone(), new_game_object.clone()).is_some()
-    }
-
-    pub fn remove_game_object_at(&mut self, position: &Position) -> bool {
-        self.position_to_game_object_map.remove(&position).is_some()
     }
 
     pub fn move_player_by(&mut self, row_delta: i32, column_delta: i32) -> bool {
         let old_position = self.position_to_game_object_map.iter().find(|(_, &ref go)| *go == GameObject::Player).map(|e| e.0).unwrap().clone();
-        if (old_position.row as i32) + row_delta < 0 || (old_position.column as i32) + column_delta < 0 {
-            return false;
-        }
+
         let new_row = ((old_position.row as i32) + row_delta) as usize;
         let new_column = ((old_position.column as i32) + column_delta) as usize;
+
+        if new_row < 0 || new_column < 0 || new_row >= self.get_size_rows() || new_column >= self.get_size_column() {
+            return false;
+        }
+
         let new_position = Position { row: new_row, column: new_column };
+
+        if self.get_game_object_at(&new_position).cloned() == Some(GameObject::Wall) {
+            return false
+        }
 
         self.remove_game_object_at(&old_position);
         self.update_game_object_at(&new_position, &GameObject::Player);
         true
+    }
+
+    fn update_game_object_at(&mut self, position: &Position, new_game_object: &GameObject) -> bool {
+        self.position_to_game_object_map.insert(position.clone(), new_game_object.clone()).is_some()
+    }
+
+    fn remove_game_object_at(&mut self, position: &Position) -> bool {
+        self.position_to_game_object_map.remove(&position).is_some()
     }
 }
 
@@ -88,23 +95,23 @@ mod level_tests {
     use crate::common::*;
     use crate::game::game_object::GameObject::*;
 
+    static TEST_STR: &str = "......\n\
+            ....@.\n\
+            #4...#\n\
+            8..###";
+
     #[test]
     fn from_string_test() {
         setup();
 
-        let test_str =
-            "......\n\
-            ....@.\n\
-            ##...#\n\
-            ...###";
-
-        let result = Level::from_string(test_str, 100);
+        let result = Level::from_string(TEST_STR, 100);
 
         let expected_position_to_game_objects = HashMap::from_iter(vec![
             (Position{ row: 1, column: 4 }, Player),
             (Position{ row: 2, column: 0 }, Wall),
-            (Position{ row: 2, column: 1 }, Wall),
+            (Position{ row: 2, column: 1 }, Reward(4)),
             (Position{ row: 2, column: 5 }, Wall),
+            (Position{ row: 3, column: 0 }, Reward(8)),
             (Position{ row: 3, column: 3 }, Wall),
             (Position{ row: 3, column: 4 }, Wall),
             (Position{ row: 3, column: 5 }, Wall)
@@ -116,5 +123,107 @@ mod level_tests {
         };
 
         assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn get_size_rows_test() {
+        setup();
+
+        let level = Level::from_string(TEST_STR, 100);
+
+        let result = level.get_size_rows();
+
+        assert_eq!(result, 4);
+    }
+
+    #[test]
+    fn get_size_columns_test() {
+        setup();
+
+        let level = Level::from_string(TEST_STR, 100);
+
+        let result = level.get_size_column();
+
+        assert_eq!(result, 6);
+    }
+
+    #[test]
+    fn get_point_amount_test() {
+        setup();
+
+        let level = Level::from_string(TEST_STR, 100);
+
+        let result = level.get_point_amount();
+
+        assert_eq!(result, 12);
+    }
+
+    #[test]
+    fn get_game_object_at_test() {
+        setup();
+
+        let level = Level::from_string(TEST_STR, 100);
+
+        let result_1 = level.get_game_object_at(&Position { row: 0, column: 0 });
+        let result_2 = level.get_game_object_at(&Position { row: 1, column: 4 });
+        let result_3 = level.get_game_object_at(&Position { row: 3, column: 0 });
+
+        assert_eq!(result_1, None);
+        assert_eq!(result_2.cloned(), Some(Player));
+        assert_eq!(result_3.cloned(), Some(Reward(8)));
+    }
+
+    #[test]
+    fn update_game_object_at_test() {
+        setup();
+
+        let mut level = Level::from_string(TEST_STR, 100);
+
+        let position_1 = Position { row: 0, column: 0 };
+        let position_2 = Position { row: 1, column: 4 };
+
+        let result_1 = level.update_game_object_at(&position_1, &Reward(5));
+        let result_2 = level.update_game_object_at(&position_2, &Wall);
+
+        assert!(!result_1);
+        assert!(result_2);
+
+        assert_eq!(level.get_game_object_at(&position_1).cloned(), Some(Reward(5)));
+        assert_eq!(level.get_game_object_at(&position_2).cloned(), Some(Wall));
+    }
+
+    #[test]
+    fn remove_game_object_at_test() {
+        setup();
+
+        let mut level = Level::from_string(TEST_STR, 100);
+
+        let position_1 = Position { row: 0, column: 0 };
+        let position_2 = Position { row: 1, column: 4 };
+
+        let result_1 = level.remove_game_object_at(&position_1);
+        let result_2 = level.remove_game_object_at(&position_2);
+
+        assert!(!result_1);
+        assert!(result_2);
+
+        assert_eq!(level.get_game_object_at(&position_1), None);
+        assert_eq!(level.get_game_object_at(&position_2), None);
+    }
+
+    #[test]
+    fn move_player_by_test() {
+        setup();
+
+        let mut level = Level::from_string(TEST_STR, 100);
+
+        let result_1 = level.move_player_by(0, 2);
+        let result_2 = level.move_player_by(1, 0);
+        let result_3 = level.move_player_by(0, 1);
+
+        assert!(!result_1);
+        assert!(result_2);
+        assert!(!result_3);
+        assert_eq!(level.get_game_object_at(&Position { row: 2, column: 4 }).cloned(), Some(Player));
     }
 }
