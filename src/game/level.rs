@@ -53,5 +53,31 @@ impl Level {
             GameObject::Reward(amount) => *amount as usize
         }).sum()
     }
+
+    pub fn get_game_object_at(&self, position: Position) -> Option<&GameObject> {
+        self.position_to_game_object_map.get(&position)
+    }
+
+    pub fn update_game_object_at(&mut self, position: &Position, new_game_object: &GameObject) -> bool {
+        self.position_to_game_object_map.insert(position.clone(), new_game_object.clone()).is_some()
+    }
+
+    pub fn remove_game_object_at(&mut self, position: &Position) -> bool {
+        self.position_to_game_object_map.remove(&position).is_some()
+    }
+
+    pub fn move_player_by(&mut self, row_delta: i32, column_delta: i32) -> bool {
+        let old_position = self.position_to_game_object_map.iter().find(|(_, &ref go)| *go == GameObject::Player).map(|e| e.0).unwrap().clone();
+        if (old_position.row as i32) + row_delta < 0 || (old_position.column as i32) + column_delta < 0 {
+            return false;
+        }
+        let new_row = ((old_position.row as i32) + row_delta) as usize;
+        let new_column = ((old_position.column as i32) + column_delta) as usize;
+        let new_position = Position { row: new_row, column: new_column };
+
+        self.remove_game_object_at(&old_position);
+        self.update_game_object_at(&new_position, &GameObject::Player);
+        true
+    }
 }
 
