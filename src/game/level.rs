@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 use super::game_object::*;
 
-#[derive(Hash, PartialEq, Eq, Clone)]
+#[derive(Hash, PartialEq, Eq, Clone, Debug)]
 struct Position {
     row: usize,
     column: usize
 }
 
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub struct Level {
     position_to_game_object_map: HashMap<Position, GameObject>,
     max_steps: usize
@@ -81,3 +82,39 @@ impl Level {
     }
 }
 
+#[cfg(test)]
+mod level_tests {
+    use super::*;
+    use crate::common::*;
+    use crate::game::game_object::GameObject::*;
+
+    #[test]
+    fn from_string_test() {
+        setup();
+
+        let test_str =
+            "......\n\
+            ....@.\n\
+            ##...#\n\
+            ...###";
+
+        let result = Level::from_string(test_str, 100);
+
+        let expected_position_to_game_objects = HashMap::from_iter(vec![
+            (Position{ row: 1, column: 4 }, Player),
+            (Position{ row: 2, column: 0 }, Wall),
+            (Position{ row: 2, column: 1 }, Wall),
+            (Position{ row: 2, column: 5 }, Wall),
+            (Position{ row: 3, column: 3 }, Wall),
+            (Position{ row: 3, column: 4 }, Wall),
+            (Position{ row: 3, column: 5 }, Wall)
+        ]);
+
+        let expected = Level {
+            position_to_game_object_map: expected_position_to_game_objects,
+            max_steps: 100,
+        };
+
+        assert_eq!(result, expected);
+    }
+}
