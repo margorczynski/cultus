@@ -4,7 +4,7 @@ use log::debug;
 use super::network::*;
 use super::connection::*;
 
-struct SmartNetwork {
+pub struct SmartNetwork {
     network: Network,
     memory_addr_input_count: usize,
     memory_rw_input_count: usize,

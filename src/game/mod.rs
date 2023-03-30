@@ -1,4 +1,4 @@
-mod game_object;
-mod game_state;
+pub mod game_object;
+pub mod game_state;
 mod level;
-mod game_action;
+pub mod game_action;

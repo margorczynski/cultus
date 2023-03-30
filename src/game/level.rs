@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use log::debug;
 use super::game_object::*;
 
-#[derive(Hash, PartialEq, Eq, Clone, Debug)]
+#[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
 struct Position {
     row: usize,
     column: usize
@@ -15,6 +15,7 @@ pub struct Level {
 }
 
 impl Level {
+
     pub fn from_string(s: &str, max_steps: usize) -> Level {
         let mut position_to_game_object_map: HashMap<Position, GameObject> = HashMap::new();
 
@@ -61,7 +62,7 @@ impl Level {
     }
 
     pub fn move_player_by(&mut self, row_delta: i32, column_delta: i32) -> Option<GameObject> {
-        let old_position = self.position_to_game_object_map.iter().find(|(_, &ref go)| *go == GameObject::Player).map(|e| e.0).unwrap().clone();
+        let old_position = self.get_player_position();
 
         debug!("Move player - row_delta={}, column_delta={}, old_position={:?}", row_delta, column_delta, old_position);
 
@@ -84,6 +85,19 @@ impl Level {
         self.update_game_object_at(&new_position, &GameObject::Player)
     }
 
+    pub fn get_objects_visible_by_player(&self, visibility_distance: usize) -> HashMap<&Position, &GameObject> {
+        let player_position = self.get_player_position();
+
+        self.position_to_game_object_map
+            .iter()
+            .filter(|(pos, _)| (pos.row as i32 - player_position.row as i32).abs() <= visibility_distance as i32 && (pos.column as i32 - player_position.column as i32).abs() <= visibility_distance as i32)
+            .collect()
+    }
+
+    fn get_player_position(&self) -> Position {
+        self.position_to_game_object_map.iter().find(|(_, &ref go)| *go == GameObject::Player).map(|e| e.0).unwrap().clone()
+    }
+
     fn update_game_object_at(&mut self, position: &Position, new_game_object: &GameObject) -> Option<GameObject> {
         self.position_to_game_object_map.insert(position.clone(), new_game_object.clone())
     }
@@ -99,9 +113,10 @@ mod level_tests {
     use crate::common::*;
     use crate::game::game_object::GameObject::*;
 
-    static TEST_STR: &str = "......\n\
+    static TEST_STR: &str =
+           "......\n\
             ....@.\n\
-            #4...#\n\
+            4#...#\n\
             8..###";
 
     #[test]
@@ -112,8 +127,8 @@ mod level_tests {
 
         let expected_position_to_game_objects = HashMap::from_iter(vec![
             (Position{ row: 1, column: 4 }, Player),
-            (Position{ row: 2, column: 0 }, Wall),
-            (Position{ row: 2, column: 1 }, Reward(4)),
+            (Position{ row: 2, column: 0 }, Reward(4)),
+            (Position{ row: 2, column: 1 }, Wall),
             (Position{ row: 2, column: 5 }, Wall),
             (Position{ row: 3, column: 0 }, Reward(8)),
             (Position{ row: 3, column: 3 }, Wall),
@@ -224,12 +239,53 @@ mod level_tests {
         let result_1 = level.move_player_by(0, 2);
         let result_2 = level.move_player_by(1, 0);
         let result_3 = level.move_player_by(0, 1);
-        let result_4 = level.move_player_by(0, -3);
+        let result_4 = level.move_player_by(0, -4);
 
         assert_eq!(result_1, None);
         assert_eq!(result_2, None);
         assert_eq!(result_3, None);
         assert_eq!(result_4, Some(Reward(4)));
-        assert_eq!(level.get_game_object_at(&Position { row: 2, column: 1 }).cloned(), Some(Player));
+        assert_eq!(level.get_game_object_at(&Position { row: 2, column: 0 }).cloned(), Some(Player));
+    }
+
+    #[test]
+    fn get_objects_visible_by_player_test() {
+        setup();
+
+        let visibility_distance = 2;
+        let mut level = Level::from_string(TEST_STR, 100);
+
+        let expected_objects_1 = HashMap::from_iter(vec![
+            (Position{ row: 0, column: 0 }, Player),
+            (Position{ row: 2, column: 0 }, Reward(4)),
+            (Position{ row: 2, column: 1 }, Wall)
+        ]);
+        let expected_objects_2 = HashMap::from_iter(vec![
+            (Position{ row: 1, column: 0 }, Player),
+            (Position{ row: 2, column: 0 }, Reward(4)),
+            (Position{ row: 2, column: 1 }, Wall),
+            (Position{ row: 3, column: 0 }, Reward(8)),
+        ]);
+        let expected_objects_3 = HashMap::from_iter(vec![
+            (Position{ row: 2, column: 2 }, Player),
+            (Position{ row: 2, column: 0 }, Reward(4)),
+            (Position{ row: 2, column: 1 }, Wall),
+            (Position{ row: 3, column: 0 }, Reward(8)),
+            (Position{ row: 3, column: 3 }, Wall),
+            (Position{ row: 3, column: 4 }, Wall),
+        ]);
+
+        level.move_player_by(-1, -4);
+        let result_1: HashMap<Position, GameObject> = level.get_objects_visible_by_player(visibility_distance).iter().map(|(&p, &o)| (p.clone(), o.clone())).collect();
+
+        level.move_player_by(1, 0);
+        let result_2: HashMap<Position, GameObject> = level.get_objects_visible_by_player(visibility_distance).iter().map(|(&p, &o)| (p.clone(), o.clone())).collect();
+
+        level.move_player_by(1, 2);
+        let result_3: HashMap<Position, GameObject> = level.get_objects_visible_by_player(visibility_distance).iter().map(|(&p, &o)| (p.clone(), o.clone())).collect();
+
+        assert_eq!(result_1, expected_objects_1);
+        assert_eq!(result_2, expected_objects_2);
+        assert_eq!(result_3, expected_objects_3);
     }
 }
