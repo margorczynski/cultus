@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use log::debug;
 use super::game_object::*;
 
 #[derive(Hash, PartialEq, Eq, Clone, Debug)]
@@ -10,7 +11,7 @@ struct Position {
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct Level {
     position_to_game_object_map: HashMap<Position, GameObject>,
-    max_steps: usize
+    pub max_steps: usize
 }
 
 impl Level {
@@ -59,29 +60,32 @@ impl Level {
         self.position_to_game_object_map.get(&position)
     }
 
-    pub fn move_player_by(&mut self, row_delta: i32, column_delta: i32) -> bool {
+    pub fn move_player_by(&mut self, row_delta: i32, column_delta: i32) -> Option<GameObject> {
         let old_position = self.position_to_game_object_map.iter().find(|(_, &ref go)| *go == GameObject::Player).map(|e| e.0).unwrap().clone();
 
-        let new_row = ((old_position.row as i32) + row_delta) as usize;
-        let new_column = ((old_position.column as i32) + column_delta) as usize;
+        debug!("Move player - row_delta={}, column_delta={}, old_position={:?}", row_delta, column_delta, old_position);
 
-        if new_row < 0 || new_column < 0 || new_row >= self.get_size_rows() || new_column >= self.get_size_column() {
-            return false;
+        let new_row = (old_position.row as i32) + row_delta;
+        let new_column = (old_position.column as i32) + column_delta;
+
+        if new_row < 0 || new_column < 0 || new_row as usize >= self.get_size_rows() || new_column as usize >= self.get_size_column() {
+            debug!("Trying to move out of bound - new_row={}, new_column={}", new_row, new_column);
+            return None;
         }
 
-        let new_position = Position { row: new_row, column: new_column };
+        let new_position = Position { row: new_row as usize, column: new_column as usize };
 
         if self.get_game_object_at(&new_position).cloned() == Some(GameObject::Wall) {
-            return false
+            debug!("Trying to move to position occupied by tree - new_position={:?}", new_position);
+            return None;
         }
 
         self.remove_game_object_at(&old_position);
-        self.update_game_object_at(&new_position, &GameObject::Player);
-        true
+        self.update_game_object_at(&new_position, &GameObject::Player)
     }
 
-    fn update_game_object_at(&mut self, position: &Position, new_game_object: &GameObject) -> bool {
-        self.position_to_game_object_map.insert(position.clone(), new_game_object.clone()).is_some()
+    fn update_game_object_at(&mut self, position: &Position, new_game_object: &GameObject) -> Option<GameObject> {
+        self.position_to_game_object_map.insert(position.clone(), new_game_object.clone())
     }
 
     fn remove_game_object_at(&mut self, position: &Position) -> bool {
@@ -185,8 +189,8 @@ mod level_tests {
         let result_1 = level.update_game_object_at(&position_1, &Reward(5));
         let result_2 = level.update_game_object_at(&position_2, &Wall);
 
-        assert!(!result_1);
-        assert!(result_2);
+        assert_eq!(result_1, None);
+        assert_eq!(result_2, Some(Player));
 
         assert_eq!(level.get_game_object_at(&position_1).cloned(), Some(Reward(5)));
         assert_eq!(level.get_game_object_at(&position_2).cloned(), Some(Wall));
@@ -220,10 +224,12 @@ mod level_tests {
         let result_1 = level.move_player_by(0, 2);
         let result_2 = level.move_player_by(1, 0);
         let result_3 = level.move_player_by(0, 1);
+        let result_4 = level.move_player_by(0, -3);
 
-        assert!(!result_1);
-        assert!(result_2);
-        assert!(!result_3);
-        assert_eq!(level.get_game_object_at(&Position { row: 2, column: 4 }).cloned(), Some(Player));
+        assert_eq!(result_1, None);
+        assert_eq!(result_2, None);
+        assert_eq!(result_3, None);
+        assert_eq!(result_4, Some(Reward(4)));
+        assert_eq!(level.get_game_object_at(&Position { row: 2, column: 1 }).cloned(), Some(Player));
     }
 }

@@ -14,12 +14,12 @@ struct SmartNetwork {
 }
 
 impl SmartNetwork {
-    pub fn from_bitstring(s: &str, input_count: usize, output_count: usize, nand_count_bits: usize, nor_count_bits: usize, memory_addr_bits: usize, memory_rw_bits: usize) -> SmartNetwork {
+    pub fn from_bitstring(s: &str, input_count: usize, output_count: usize, nand_count_bits: usize, memory_addr_bits: usize, memory_rw_bits: usize) -> SmartNetwork {
 
         let total_input_count = input_count + memory_rw_bits;
         let total_output_count = output_count + (2 * memory_addr_bits) + memory_rw_bits;
 
-        let mut network = Network::from_bitstring(s, total_input_count, total_output_count, nand_count_bits, nor_count_bits).unwrap().clone();
+        let mut network = Network::from_bitstring(s, total_input_count, total_output_count, nand_count_bits).unwrap().clone();
 
         network.clean_connections();
 
@@ -35,7 +35,7 @@ impl SmartNetwork {
         }
     }
 
-    pub fn get_required_bits_for_bitstring(input_count: usize, output_count: usize, nand_count_bits: usize, nor_count_bits: usize, memory_addr_input_count: usize, memory_rw_input_count: usize, connection_count: usize) -> usize {
+    pub fn get_required_bits_for_bitstring(input_count: usize, output_count: usize, nand_count_bits: usize, memory_addr_input_count: usize, memory_rw_input_count: usize, connection_count: usize) -> usize {
         let total_input_count = input_count + memory_rw_input_count;
         let total_output_count = output_count + (2 * memory_addr_input_count) + memory_rw_input_count;
 
@@ -43,14 +43,14 @@ impl SmartNetwork {
         debug!("Total output count: {}", total_output_count);
 
         let input_output_max_index_bits_count: usize = [total_input_count, total_output_count].map(|cnt| get_required_bits_count(cnt)).iter().max().unwrap().clone();
-        let connection_index_bits_count = [input_output_max_index_bits_count, nand_count_bits, nor_count_bits].iter().max().unwrap().clone();
-        let connection_bits_count = 4 + (2 * connection_index_bits_count);
+        let connection_index_bits_count = [input_output_max_index_bits_count, nand_count_bits].iter().max().unwrap().clone();
+        let connection_bits_count = 2 + (2 * connection_index_bits_count);
 
         debug!("IO bit count: {}", input_output_max_index_bits_count);
         debug!("Connection index bits count: {}", connection_index_bits_count);
         debug!("Connection bits count: {}", connection_bits_count);
 
-        nand_count_bits + nor_count_bits + (connection_count * connection_bits_count)
+        nand_count_bits + (connection_count * connection_bits_count)
     }
 
     pub fn compute_output(&mut self, input: &[bool]) -> Vec<bool> {
@@ -97,16 +97,15 @@ mod smart_network_tests {
 
         let expected_network_str = [
             "1100", //12 NANDs
-            "00100", //4 NORs
-            "000000000000", //I0 -> O0
-            "000100000000", //I0 -> NAND0
-            "000100010000", //I1 -> NAND0
-            "011000000000", //NAND0 -> NOR0
-            "001000100000", //I2 -> NOR0
-            "100000000001" //NOR0 -> O1
+            "0000000000000000", //I0 -> O0
+            "0100000000000000", //I0 -> NAND0
+            "0100000010000000", //I1 -> NAND0
+            "1100000000000000", //NAND0 -> NAND0
+            "0100000100000000", //I2 -> NAND0
+            "1000000000000001" //NAND0 -> O1
         ].join("");
 
-        let result = SmartNetwork::from_bitstring(&expected_network_str, input_count, output_count, 4, 5, 16, 64);
+        let result = SmartNetwork::from_bitstring(&expected_network_str, input_count, output_count, 4, 16, 64);
 
         debug!("CONNS: {:?}", result.network.connections);
 
@@ -115,16 +114,16 @@ mod smart_network_tests {
         //12 + 16 + 16 + 64
         assert_eq!(result.network.output_count, 108);
         //4 cleaned out
-        assert_eq!(result.network.connections.len(), 2);
+        assert_eq!(result.network.connections.len(), 4);
         assert_eq!(result.memory_addr_input_count, 16);
         assert_eq!(result.memory_rw_input_count, 64);
     }
 
     #[test]
     fn get_required_bits_for_bitstring_test() {
-        let result = SmartNetwork::get_required_bits_for_bitstring(9, 18, 16, 16, 8, 32, 100);
+        let result = SmartNetwork::get_required_bits_for_bitstring(9, 18, 16, 8, 32, 100);
 
-        assert_eq!(result, 3632)
+        assert_eq!(result, 3416)
     }
 
     #[test]
@@ -136,42 +135,42 @@ mod smart_network_tests {
             connections: HashSet::from_iter(vec![
                 Connection {
                     input: (InputConnectionType::Input, 0),
-                    output: (OutputConnectionType::Gate(Gate::NAND), 0),
+                    output: (OutputConnectionType::NAND, 0),
                 },
                 Connection {
                     input: (InputConnectionType::Input, 1),
-                    output: (OutputConnectionType::Gate(Gate::NAND), 0),
+                    output: (OutputConnectionType::NAND, 0),
                 },
                 Connection {
                     input: (InputConnectionType::Input, 1),
-                    output: (OutputConnectionType::Gate(Gate::NAND), 1),
+                    output: (OutputConnectionType::NAND, 1),
                 },
                 Connection {
                     input: (InputConnectionType::Input, 2),
-                    output: (OutputConnectionType::Gate(Gate::NAND), 1),
+                    output: (OutputConnectionType::NAND, 1),
                 },
                 Connection {
                     input: (InputConnectionType::Input, 3),
                     output: (OutputConnectionType::Output, 5),
                 },
                 Connection {
-                    input: (InputConnectionType::Gate(Gate::NAND), 0),
+                    input: (InputConnectionType::NAND, 0),
                     output: (OutputConnectionType::Output, 0),
                 },
                 Connection {
-                    input: (InputConnectionType::Gate(Gate::NAND), 1),
+                    input: (InputConnectionType::NAND, 1),
                     output: (OutputConnectionType::Output, 1),
                 },
                 Connection {
-                    input: (InputConnectionType::Gate(Gate::NAND), 1),
+                    input: (InputConnectionType::NAND, 1),
                     output: (OutputConnectionType::Output, 2),
                 },
                 Connection {
-                    input: (InputConnectionType::Gate(Gate::NAND), 1),
+                    input: (InputConnectionType::NAND, 1),
                     output: (OutputConnectionType::Output, 3),
                 },
                 Connection {
-                    input: (InputConnectionType::Gate(Gate::NAND), 1),
+                    input: (InputConnectionType::NAND, 1),
                     output: (OutputConnectionType::Output, 4),
                 },
             ]),
