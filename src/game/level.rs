@@ -3,9 +3,9 @@ use log::debug;
 use super::game_object::*;
 
 #[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
-struct Position {
-    row: usize,
-    column: usize
+pub struct Position {
+    pub row: usize,
+    pub column: usize
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -94,7 +94,7 @@ impl Level {
             .collect()
     }
 
-    fn get_player_position(&self) -> Position {
+    pub fn get_player_position(&self) -> Position {
         self.position_to_game_object_map.iter().find(|(_, &ref go)| *go == GameObject::Player).map(|e| e.0).unwrap().clone()
     }
 
