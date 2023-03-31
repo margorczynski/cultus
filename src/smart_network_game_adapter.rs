@@ -1,5 +1,5 @@
 use crate::game::game_state::GameState;
-use super::game::level::Position;
+use crate::game::level::*;
 use super::game::game_object::*;
 
 
@@ -73,6 +73,7 @@ fn game_state_to_bit_vector(game_state: &GameState, visibility_distance: usize) 
 
 #[cfg(test)]
 mod smart_network_game_adapter_tests {
+    use log::debug;
     use super::*;
     use crate::common::*;
     use crate::game::game_object::GameObject::*;
@@ -94,5 +95,62 @@ mod smart_network_game_adapter_tests {
         assert_eq!(bitstring_to_bit_vector("00100"), vec![false, false, true, false, false]);
         assert_eq!(bitstring_to_bit_vector("00111"), vec![false, false, true, true, true]);
         assert_eq!(bitstring_to_bit_vector("010101010101"), vec![false, true, false, true, false, true, false, true, false, true, false, true]);
+    }
+
+    #[test]
+    fn game_state_to_bit_vector_test() {
+        setup();
+
+        let test_str: &str =
+            "........\n\
+            2...@.##\n\
+            #4..3#..\n\
+            8..###..";
+
+        let expected_bitstring = vec![
+          "000000000000",
+          "000000000000",
+          //First row (out of map)
+          "00000",
+          "00000",
+          "00000",
+          "00000",
+          "00000",
+          //Second row
+          "00000",
+          "00000",
+          "00000",
+          "00000",
+          "00000",
+          //Third row
+          "00000",
+          "00000",
+          "00001",
+          "00000",
+          "00010",
+          //Fourth row
+          "00000",
+          "00000",
+          "10011",
+          "00010",
+          "00000",
+          //Fifth row
+          "00000",
+          "00010",
+          "00010",
+          "00010",
+          "00000",
+        ].concat();
+
+        let test_level = Level::from_string(&test_str, 2);
+
+        let initial_game_state = GameState::from_initial_level(test_level.clone());
+        let finished_game_state = GameState::Finished(0);
+
+        let result_in_progress = game_state_to_bit_vector(&initial_game_state, 2).unwrap();
+        let result_finished = game_state_to_bit_vector(&finished_game_state, 2);
+
+        assert_eq!(bitstring_to_bit_vector(&expected_bitstring), result_in_progress);
+        assert_eq!(None, result_finished);
     }
 }
