@@ -2,7 +2,7 @@ pub enum GameAction {
     MoveUp,
     MoveDown,
     MoveRight,
-    MoveLeft
+    MoveLeft,
 }
 
 impl GameAction {

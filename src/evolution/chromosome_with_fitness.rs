@@ -5,23 +5,17 @@ use crate::evolution::chromosome::Chromosome;
 #[derive(Hash, Clone, Debug)]
 pub struct ChromosomeWithFitness<T: Clone> {
     pub chromosome: Chromosome,
-    pub fitness: T
+    pub fitness: T,
 }
 
 impl<T: Clone> ChromosomeWithFitness<T> {
-    pub fn from_chromosome_and_fitness(chromosome: Chromosome, fitness: T) -> ChromosomeWithFitness<T> {
+    pub fn from_chromosome_and_fitness(
+        chromosome: Chromosome,
+        fitness: T,
+    ) -> ChromosomeWithFitness<T> {
         ChromosomeWithFitness {
             chromosome,
-            fitness
-        }
-    }
-
-    pub fn from_bitstring(s: &str, fitness: T) -> ChromosomeWithFitness<T> {
-        let chromosome = Chromosome::from_bitstring(s);
-
-        ChromosomeWithFitness {
-            chromosome,
-            fitness
+            fitness,
         }
     }
 }

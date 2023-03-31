@@ -10,16 +10,22 @@ use crate::smart_network::smart_network::SmartNetwork;
 
 use super::game::game_object::*;
 
-pub fn play_game_with_network(smart_network: &mut SmartNetwork, initial_level: Level, visibility_distance: usize) -> usize {
-
+pub fn play_game_with_network(
+    smart_network: &mut SmartNetwork,
+    initial_level: Level,
+    visibility_distance: usize,
+) -> usize {
     let mut current_game_state = GameState::from_initial_level(initial_level);
 
     loop {
         match current_game_state.borrow() {
             in_progress @ GameState::InProgress(_, _, _) => {
-                let state_bit_vector = game_state_to_bit_vector(&in_progress, visibility_distance).unwrap();
-                let smart_network_output = smart_network.compute_output(state_bit_vector.as_slice());
-                let smart_network_output_as_action = game_action_from_bit_vector(&smart_network_output).unwrap();
+                let state_bit_vector =
+                    game_state_to_bit_vector(&in_progress, visibility_distance).unwrap();
+                let smart_network_output =
+                    smart_network.compute_output(state_bit_vector.as_slice());
+                let smart_network_output_as_action =
+                    game_action_from_bit_vector(&smart_network_output).unwrap();
 
                 current_game_state = current_game_state.next_state(smart_network_output_as_action);
             }
@@ -30,24 +36,13 @@ pub fn play_game_with_network(smart_network: &mut SmartNetwork, initial_level: L
     }
 }
 
-fn game_action_to_bitstring(game_action: GameAction) -> String {
-    let str_res = match game_action {
-        GameAction::MoveUp => "00",
-        GameAction::MoveDown => "01",
-        GameAction::MoveRight => "10",
-        GameAction::MoveLeft => "11"
-    };
-
-    String::from(str_res)
-}
-
 fn game_action_from_bit_vector(bit_vector: &Vec<bool>) -> Option<GameAction> {
     match bit_vector.as_slice() {
         [false, false] => Some(MoveUp),
         [false, true] => Some(MoveDown),
         [true, false] => Some(MoveRight),
         [true, true] => Some(MoveLeft),
-        _ => None
+        _ => None,
     }
 }
 
@@ -55,20 +50,21 @@ fn game_object_to_bitstring(game_object: Option<&GameObject>) -> String {
     //Max reward is 9 - 5 bits, if first bit is 1 then it encodes reward value
     match game_object {
         None => String::from("00000"),
-        Some(go) => {
-            match go {
-                GameObject::Player => String::from("00001"),
-                GameObject::Wall => String::from("00010"),
-                GameObject::Reward(amount) => {
-                    let amount_binary = format!("{amount:b}");
-                    format!("1{amount_binary:0>4}")
-                }
+        Some(go) => match go {
+            GameObject::Player => String::from("00001"),
+            GameObject::Wall => String::from("00010"),
+            GameObject::Reward(amount) => {
+                let amount_binary = format!("{amount:b}");
+                format!("1{amount_binary:0>4}")
             }
-        }
+        },
     }
 }
 
-fn game_state_to_bit_vector(game_state: &GameState, visibility_distance: usize) -> Option<Vec<bool>> {
+fn game_state_to_bit_vector(
+    game_state: &GameState,
+    visibility_distance: usize,
+) -> Option<Vec<bool>> {
     match game_state {
         GameState::InProgress(current_level, current_step, current_points) => {
             let visible_objects = current_level.get_objects_visible_by_player(visibility_distance);
@@ -97,7 +93,12 @@ fn game_state_to_bit_vector(game_state: &GameState, visibility_distance: usize) 
                     let game_object_at = if row >= 0 && column >= 0 {
                         let row_cast = row as usize;
                         let column_cast = column as usize;
-                        visible_objects.get(&Position {row: row_cast, column: column_cast}).cloned()
+                        visible_objects
+                            .get(&Position {
+                                row: row_cast,
+                                column: column_cast,
+                            })
+                            .cloned()
                     } else {
                         None
                     };
@@ -112,7 +113,7 @@ fn game_state_to_bit_vector(game_state: &GameState, visibility_distance: usize) 
 
             Some(bitstring_to_bit_vector(&final_bitstring))
         }
-        GameState::Finished(_) => None
+        GameState::Finished(_) => None,
     }
 }
 
@@ -131,34 +132,26 @@ mod smart_network_game_adapter_tests {
         let output_count = 2; //2 bits
 
         let network_str = [
-            "1100", //12 NANDs
+            "1100",               //12 NANDs
             "000000000000000000", //I0 -> O0
             "010000000000000000", //I0 -> NAND0
             "010000000100000000", //I1 -> NAND0
-            "100000000000000001" //NAND0 -> O1
-        ].concat();
+            "100000000000000001", //NAND0 -> O1
+        ]
+        .concat();
 
-        let test_str: &str =
-            "........\n\
+        let test_str: &str = "........\n\
             2...@.##\n\
             #4..3#..\n\
             8..###..";
 
-        let mut smart_network = SmartNetwork::from_bitstring(&network_str, input_count, output_count, 4, 16, 64);
+        let mut smart_network =
+            SmartNetwork::from_bitstring(&network_str, input_count, output_count, 4, 16, 64);
         let level = Level::from_string(&test_str, 5);
 
         let result = play_game_with_network(&mut smart_network, level, 2);
 
         assert_eq!(result, 3);
-    }
-
-    #[test]
-    fn game_action_to_bitstring_test() {
-        setup();
-        assert_eq!(game_action_to_bitstring(GameAction::MoveUp), "00");
-        assert_eq!(game_action_to_bitstring(GameAction::MoveDown), "01");
-        assert_eq!(game_action_to_bitstring(GameAction::MoveRight), "10");
-        assert_eq!(game_action_to_bitstring(GameAction::MoveLeft), "11");
     }
 
     #[test]
@@ -175,55 +168,64 @@ mod smart_network_game_adapter_tests {
     #[test]
     fn bitstring_to_bit_vector_test() {
         setup();
-        assert_eq!(bitstring_to_bit_vector("00100"), vec![false, false, true, false, false]);
-        assert_eq!(bitstring_to_bit_vector("00111"), vec![false, false, true, true, true]);
-        assert_eq!(bitstring_to_bit_vector("010101010101"), vec![false, true, false, true, false, true, false, true, false, true, false, true]);
+        assert_eq!(
+            bitstring_to_bit_vector("00100"),
+            vec![false, false, true, false, false]
+        );
+        assert_eq!(
+            bitstring_to_bit_vector("00111"),
+            vec![false, false, true, true, true]
+        );
+        assert_eq!(
+            bitstring_to_bit_vector("010101010101"),
+            vec![false, true, false, true, false, true, false, true, false, true, false, true]
+        );
     }
 
     #[test]
     fn game_state_to_bit_vector_test() {
         setup();
 
-        let test_str: &str =
-            "........\n\
+        let test_str: &str = "........\n\
             2...@.##\n\
             #4..3#..\n\
             8..###..";
 
         let expected_bitstring = vec![
-          "000000000000",
-          "000000000000",
-          //First row (out of map)
-          "00000",
-          "00000",
-          "00000",
-          "00000",
-          "00000",
-          //Second row
-          "00000",
-          "00000",
-          "00000",
-          "00000",
-          "00000",
-          //Third row
-          "00000",
-          "00000",
-          "00001",
-          "00000",
-          "00010",
-          //Fourth row
-          "00000",
-          "00000",
-          "10011",
-          "00010",
-          "00000",
-          //Fifth row
-          "00000",
-          "00010",
-          "00010",
-          "00010",
-          "00000",
-        ].concat();
+            "000000000000",
+            "000000000000",
+            //First row (out of map)
+            "00000",
+            "00000",
+            "00000",
+            "00000",
+            "00000",
+            //Second row
+            "00000",
+            "00000",
+            "00000",
+            "00000",
+            "00000",
+            //Third row
+            "00000",
+            "00000",
+            "00001",
+            "00000",
+            "00010",
+            //Fourth row
+            "00000",
+            "00000",
+            "10011",
+            "00010",
+            "00000",
+            //Fifth row
+            "00000",
+            "00010",
+            "00010",
+            "00010",
+            "00000",
+        ]
+        .concat();
 
         let test_level = Level::from_string(&test_str, 2);
 
@@ -233,7 +235,10 @@ mod smart_network_game_adapter_tests {
         let result_in_progress = game_state_to_bit_vector(&initial_game_state, 2).unwrap();
         let result_finished = game_state_to_bit_vector(&finished_game_state, 2);
 
-        assert_eq!(bitstring_to_bit_vector(&expected_bitstring), result_in_progress);
+        assert_eq!(
+            bitstring_to_bit_vector(&expected_bitstring),
+            result_in_progress
+        );
         assert_eq!(None, result_finished);
     }
 }

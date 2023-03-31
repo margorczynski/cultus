@@ -1,7 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
 use log::debug;
-use rayon::prelude::*;
 
 use super::connection::*;
 
@@ -9,11 +8,10 @@ use super::connection::*;
 pub struct Network {
     pub input_count: usize,
     pub output_count: usize,
-    pub connections: HashSet<Connection>
+    pub connections: HashSet<Connection>,
 }
 
 impl Network {
-
     /// Create a logic gate network from a string containing binary (0s and 1s)
     /// The amount of inputs and outputs of the network is constant and specified as arguments.
     /// The amount of bits (and thus maximum number) encoding the amount of NAND gates is constant and specified as arguments.
@@ -22,12 +20,17 @@ impl Network {
     ///
     /// The string is in the form:
     /// NAND amount bits | Connection 1 input type | Connection 1 output type | Connection 1 input index | Connection 1 output index | Connection 2 ...
-    pub fn from_bitstring(s: &str, input_count: usize, output_count: usize, nand_count_bits: usize) -> Option<Network> {
+    pub fn from_bitstring(
+        s: &str,
+        input_count: usize,
+        output_count: usize,
+        nand_count_bits: usize,
+    ) -> Option<Network> {
         debug!("Decoding network from bitstring: {}", s);
 
         //Number of bits in whole string not bigger than the sum of sizes of the attributes
         if s.chars().count() <= nand_count_bits {
-            return None
+            return None;
         }
 
         //s = NAND_COUNT | CONNECTIONS...
@@ -36,10 +39,17 @@ impl Network {
         //Parse from binary string to u32 value. Panic if it fails - the assumption is that the string should always contain 0/1 only
         let nand_count = usize::from_str_radix(nand_count_binary, 2).unwrap();
 
-        let connection_index_bits_count = *[input_count, output_count, nand_count].map(|cnt| get_required_bits_count(cnt)).iter().max().unwrap();
+        let connection_index_bits_count = *[input_count, output_count, nand_count]
+            .map(|cnt| get_required_bits_count(cnt))
+            .iter()
+            .max()
+            .unwrap();
         let connection_bits_count = 2 + (2 * connection_index_bits_count);
 
-        debug!("Connection index bits amount: {}", connection_index_bits_count);
+        debug!(
+            "Connection index bits amount: {}",
+            connection_index_bits_count
+        );
         debug!("Connection bit size: {}", connection_bits_count);
 
         let connections_binary = &s[nand_count_bits..];
@@ -50,14 +60,23 @@ impl Network {
         let mut connections: HashSet<Connection> = HashSet::new();
         let mut input_counts: HashMap<(OutputConnectionType, usize), usize> = HashMap::new();
         while ind < connections_binary.len() {
-            let connection_with_len = Connection::from_bitstring(&connections_binary[ind..], input_count, output_count, nand_count, connection_index_bits_count);
-            debug!("[IDX: {}] Processing from binary connection: {:?}", ind, connection_with_len);
+            let connection_with_len = Connection::from_bitstring(
+                &connections_binary[ind..],
+                input_count,
+                output_count,
+                nand_count,
+                connection_index_bits_count,
+            );
+            debug!(
+                "[IDX: {}] Processing from binary connection: {:?}",
+                ind, connection_with_len
+            );
             match connection_with_len {
                 Some(connection) => {
                     let output = connection.output.clone();
                     let max_inputs_cnt = match output.0 {
                         OutputConnectionType::Output => 1,
-                        OutputConnectionType::NAND => 2
+                        OutputConnectionType::NAND => 2,
                     };
                     match input_counts.get(&output) {
                         None => {
@@ -70,7 +89,8 @@ impl Network {
                                 connections.insert(connection);
                                 input_counts.insert(output, new_input_count);
                             } else {
-                                over_saturated_connection_count = over_saturated_connection_count + 1;
+                                over_saturated_connection_count =
+                                    over_saturated_connection_count + 1;
                             }
                         }
                     }
@@ -82,23 +102,30 @@ impl Network {
             ind = ind + connection_bits_count;
         }
 
-        debug!("Connections which couldn't be built from binary count: {}", none_connection_count);
-        debug!("Connections discarded because of input saturation limit: {}", over_saturated_connection_count);
+        debug!(
+            "Connections which couldn't be built from binary count: {}",
+            none_connection_count
+        );
+        debug!(
+            "Connections discarded because of input saturation limit: {}",
+            over_saturated_connection_count
+        );
 
-        Some(
-            Network {
-                input_count,
-                output_count,
-                connections
-            }
-        )
+        Some(Network {
+            input_count,
+            output_count,
+            connections,
+        })
     }
 
     /// Clean up the network connections
     /// 1. Remove connections which create a cycle
     /// 2. Remove connections which are not computable (no path from input to output going through it, gate hasn't got 2 inputs and 1 output)
     pub fn clean_connections(&mut self) {
-        debug!("Cleaning up connections. Starting count: {}", self.connections.len());
+        debug!(
+            "Cleaning up connections. Starting count: {}",
+            self.connections.len()
+        );
 
         let mut cleaned_up_connections: HashSet<Connection> = self.connections.clone();
 
@@ -111,17 +138,31 @@ impl Network {
             .unwrap();
 
         //Remove the cycling connections
-        cleaned_up_connections = cleaned_up_connections.difference(&cycle_connections).cloned().collect();
+        cleaned_up_connections = cleaned_up_connections
+            .difference(&cycle_connections)
+            .cloned()
+            .collect();
 
         //Remove connections of gates where the number of inputs or outputs is incorrect
         //This is done in an iterative manner until there are no more connections to remove
         let mut connections_to_remove: HashSet<Connection> = HashSet::new();
         loop {
-            let gates_with_connections = Network::collect_gates_with_connections(&cleaned_up_connections);
+            let gates_with_connections =
+                Network::collect_gates_with_connections(&cleaned_up_connections);
 
             for (index, connections) in gates_with_connections {
-                let input_connections: Vec<_> = connections.iter().filter(|&conn| conn.output.0 == OutputConnectionType::NAND && conn.output.1 == index).collect();
-                let output_connections: Vec<_> = connections.iter().filter(|&conn| conn.input.0 == InputConnectionType::NAND && conn.input.1 == index).collect();
+                let input_connections: Vec<_> = connections
+                    .iter()
+                    .filter(|&conn| {
+                        conn.output.0 == OutputConnectionType::NAND && conn.output.1 == index
+                    })
+                    .collect();
+                let output_connections: Vec<_> = connections
+                    .iter()
+                    .filter(|&conn| {
+                        conn.input.0 == InputConnectionType::NAND && conn.input.1 == index
+                    })
+                    .collect();
 
                 if input_connections.len() != 2 || output_connections.len() < 1 {
                     connections_to_remove.extend(connections)
@@ -129,24 +170,38 @@ impl Network {
             }
 
             if connections_to_remove.is_empty() {
-                break
+                break;
             }
 
-            cleaned_up_connections = cleaned_up_connections.difference(&connections_to_remove).cloned().collect();
+            cleaned_up_connections = cleaned_up_connections
+                .difference(&connections_to_remove)
+                .cloned()
+                .collect();
 
             connections_to_remove.clear();
         }
 
-        debug!("Connections after cleanup count: {}", cleaned_up_connections.len());
+        debug!(
+            "Connections after cleanup count: {}",
+            cleaned_up_connections.len()
+        );
 
         self.connections = cleaned_up_connections;
     }
 
     /// Get the closure that computes the output vector given an input vector
-    pub fn get_outputs_computation_fn(output_count: usize, connections: &HashSet<Connection>) -> impl Fn(&Vec<bool>) -> Vec<bool> {
-
-        let mut output_index_to_input_indexes_and_gates_count_map: HashMap<usize, (usize, Vec<usize>)> = HashMap::new();
-        for output_connection in connections.iter().filter(|&conn| conn.output.0 == OutputConnectionType::Output) {
+    pub fn get_outputs_computation_fn(
+        output_count: usize,
+        connections: &HashSet<Connection>,
+    ) -> impl Fn(&Vec<bool>) -> Vec<bool> {
+        let mut output_index_to_input_indexes_and_gates_count_map: HashMap<
+            usize,
+            (usize, Vec<usize>),
+        > = HashMap::new();
+        for output_connection in connections
+            .iter()
+            .filter(|&conn| conn.output.0 == OutputConnectionType::Output)
+        {
             let mut to_explore: Vec<&Connection> = Vec::new();
             let mut gate_count: usize = 0;
             let mut input_index_stack: Vec<usize> = Vec::new();
@@ -157,64 +212,71 @@ impl Network {
                 let connection = to_explore.pop().unwrap();
 
                 match connection.input.0 {
-                    InputConnectionType::Input => {
-                        input_index_stack.push(connection.input.1)
-                    }
-                    InputConnectionType::NAND => {
-                        gate_count += 1
-                    }
+                    InputConnectionType::Input => input_index_stack.push(connection.input.1),
+                    InputConnectionType::NAND => gate_count += 1,
                 }
 
-                let inputs: Vec<&Connection> =
-                    connections.iter().filter(|&conn| conn.output.0 == connection.input.0 && conn.output.1 == connection.input.1).collect();
+                let inputs: Vec<&Connection> = connections
+                    .iter()
+                    .filter(|&conn| {
+                        conn.output.0 == connection.input.0 && conn.output.1 == connection.input.1
+                    })
+                    .collect();
 
                 to_explore.append(&mut inputs.clone());
             }
 
             debug!("get_outputs_computation_fn: Finished for connection {}, gate count: {:?}, index stack: {:?}", output_connection, gate_count, input_index_stack);
 
-            output_index_to_input_indexes_and_gates_count_map.insert(output_connection.output.1, (gate_count, input_index_stack));
+            output_index_to_input_indexes_and_gates_count_map
+                .insert(output_connection.output.1, (gate_count, input_index_stack));
         }
 
         move |input_bits: &Vec<bool>| -> Vec<bool> {
-
             debug!("Calculate output for input: {:?}", input_bits);
 
-            (0..output_count).map(|output_idx| {
-                match output_index_to_input_indexes_and_gates_count_map.get(&output_idx) {
-                    None => {
-                        false
-                    },
-                    Some((gate_count, input_indexes)) => {
+            (0..output_count)
+                .map(|output_idx| {
+                    match output_index_to_input_indexes_and_gates_count_map.get(&output_idx) {
+                        None => false,
+                        Some((gate_count, input_indexes)) => {
+                            debug!(
+                                "Stacks for output {}: gate count: {}, indexes: {:?}",
+                                output_idx, gate_count, input_indexes
+                            );
+                            let mut value_bits_stack: Vec<bool> = input_indexes
+                                .iter()
+                                .map(|&idx| input_bits.get(idx).unwrap().clone())
+                                .collect();
 
-                        debug!("Stacks for output {}: gate count: {}, indexes: {:?}", output_idx, gate_count, input_indexes);
-                        let mut value_bits_stack: Vec<bool> = input_indexes.iter().map(|&idx| input_bits.get(idx).unwrap().clone()).collect();
+                            for _ in 0..*gate_count {
+                                //After cleanup it should be impossible for this to throw
+                                let first_value = value_bits_stack.pop().unwrap();
+                                let second_value = value_bits_stack.pop().unwrap();
 
-                        for _ in 0..*gate_count {
+                                value_bits_stack.push(!(first_value && second_value))
+                            }
+
                             //After cleanup it should be impossible for this to throw
-                            let first_value = value_bits_stack.pop().unwrap();
-                            let second_value = value_bits_stack.pop().unwrap();
-
-                            value_bits_stack.push(!(first_value && second_value))
+                            value_bits_stack.first().unwrap().clone()
                         }
-
-                        //After cleanup it should be impossible for this to throw
-                        value_bits_stack.first().unwrap().clone()
                     }
-                }
-            }).collect()
+                })
+                .collect()
         }
     }
 
-    fn collect_gates_with_connections(connections: &HashSet<Connection>) -> HashMap<usize, HashSet<Connection>> {
+    fn collect_gates_with_connections(
+        connections: &HashSet<Connection>,
+    ) -> HashMap<usize, HashSet<Connection>> {
         let mut gates_with_connections: HashMap<usize, HashSet<Connection>> = HashMap::new();
 
         for connection in connections {
             let input = connection.input;
             let output = connection.output;
 
-            let mut add_gate_connection = |index: usize| {
-                match gates_with_connections.get_mut(&index) {
+            let mut add_gate_connection =
+                |index: usize| match gates_with_connections.get_mut(&index) {
                     None => {
                         let connections_set = HashSet::from_iter(vec![connection.clone()]);
                         gates_with_connections.insert(index, connections_set);
@@ -222,23 +284,25 @@ impl Network {
                     Some(curr_connections_vec) => {
                         curr_connections_vec.insert(connection.clone());
                     }
-                }
-            };
+                };
 
             match input.0 {
                 InputConnectionType::Input => {}
-                InputConnectionType::NAND => add_gate_connection(input.1)
+                InputConnectionType::NAND => add_gate_connection(input.1),
             }
             match output.0 {
                 OutputConnectionType::Output => {}
-                OutputConnectionType::NAND => add_gate_connection(output.1)
+                OutputConnectionType::NAND => add_gate_connection(output.1),
             }
         }
 
         gates_with_connections
     }
 
-    fn get_cycles(start_connection: &Connection, connections: &HashSet<Connection>) -> HashSet<Connection> {
+    fn get_cycles(
+        start_connection: &Connection,
+        connections: &HashSet<Connection>,
+    ) -> HashSet<Connection> {
         let mut to_explore: Vec<&Connection> = Vec::new();
         let mut explored: Vec<&Connection> = Vec::new();
         let mut cycles: HashSet<Connection> = HashSet::new();
@@ -253,8 +317,12 @@ impl Network {
             } else {
                 explored.push(connection);
 
-                let outputs: Vec<&Connection> =
-                    connections.iter().filter(|&conn| conn.input.0 == connection.output.0 && conn.input.1 == connection.output.1).collect();
+                let outputs: Vec<&Connection> = connections
+                    .iter()
+                    .filter(|&conn| {
+                        conn.input.0 == connection.output.0 && conn.input.1 == connection.output.1
+                    })
+                    .collect();
 
                 to_explore.append(&mut outputs.clone());
             }
@@ -315,7 +383,7 @@ mod network_tests {
             Connection {
                 input: (InputConnectionType::NAND, 0),
                 output: (OutputConnectionType::Output, 1),
-            }
+            },
         ]);
 
         let expected = Network {
@@ -325,16 +393,18 @@ mod network_tests {
         };
 
         let expected_network_str = [
-            "1100", //12 NANDs
+            "1100",       //12 NANDs
             "0000000000", //I0 -> O0
             "0100000000", //I0 -> NAND0
             "0100010000", //I1 -> NAND0
             "1100000001", //NAND0 -> NAND1
             "0100100001", //I2 -> NAND1
-            "1000000001" //NAND0 -> O1
-        ].join("");
+            "1000000001", //NAND0 -> O1
+        ]
+        .join("");
 
-        let result = Network::from_bitstring(&expected_network_str, input_count, output_count, 4).unwrap();
+        let result =
+            Network::from_bitstring(&expected_network_str, input_count, output_count, 4).unwrap();
 
         assert_eq!(result, expected);
     }
@@ -482,13 +552,9 @@ mod network_tests {
     fn get_outputs_computation_func_test() {
         setup();
 
-        let inputs = vec![
-          true, false, false, true, true
-        ];
+        let inputs = vec![true, false, false, true, true];
 
-        let expected = vec![
-          false, false, false, true, false
-        ];
+        let expected = vec![false, false, false, true, false];
 
         let connections = HashSet::from_iter(vec![
             Connection {
@@ -537,7 +603,7 @@ mod network_tests {
 
         network.clean_connections();
 
-        let output_calc_closures =  Network::get_outputs_computation_fn(5, &network.connections);
+        let output_calc_closures = Network::get_outputs_computation_fn(5, &network.connections);
 
         let result = output_calc_closures(&inputs);
 
@@ -584,36 +650,41 @@ mod network_tests {
         ]);
 
         let expected = HashMap::from([
-            (0, HashSet::from_iter(vec![
-                Connection {
-                    input: (InputConnectionType::Input, 0),
-                    output: (OutputConnectionType::NAND, 0),
-                },
-                Connection {
-                    input: (InputConnectionType::Input, 1),
-                    output: (OutputConnectionType::NAND, 0),
-                },
-                Connection {
-                    input: (InputConnectionType::Input, 2),
-                    output: (OutputConnectionType::NAND, 0),
-                },
-                Connection {
-                    input: (InputConnectionType::NAND, 2),
-                    output: (OutputConnectionType::NAND, 0),
-                }
-            ])),
-            (1, HashSet::from_iter(vec![
-                Connection {
+            (
+                0,
+                HashSet::from_iter(vec![
+                    Connection {
+                        input: (InputConnectionType::Input, 0),
+                        output: (OutputConnectionType::NAND, 0),
+                    },
+                    Connection {
+                        input: (InputConnectionType::Input, 1),
+                        output: (OutputConnectionType::NAND, 0),
+                    },
+                    Connection {
+                        input: (InputConnectionType::Input, 2),
+                        output: (OutputConnectionType::NAND, 0),
+                    },
+                    Connection {
+                        input: (InputConnectionType::NAND, 2),
+                        output: (OutputConnectionType::NAND, 0),
+                    },
+                ]),
+            ),
+            (
+                1,
+                HashSet::from_iter(vec![Connection {
                     input: (InputConnectionType::Input, 0),
                     output: (OutputConnectionType::NAND, 1),
-                }
-            ])),
-            (2, HashSet::from_iter(vec![
-                Connection {
+                }]),
+            ),
+            (
+                2,
+                HashSet::from_iter(vec![Connection {
                     input: (InputConnectionType::NAND, 2),
                     output: (OutputConnectionType::NAND, 0),
-                }
-            ])),
+                }]),
+            ),
         ]);
 
         let result = Network::collect_gates_with_connections(&connections);
@@ -654,8 +725,14 @@ mod network_tests {
 
         let connections_set = HashSet::from_iter(connections);
 
-        let start_connection_1 = connections_set.iter().find(|&e| e.input.0 == InputConnectionType::Input && e.input.1 == 0).unwrap();
-        let start_connection_2 = connections_set.iter().find(|&e| e.input.0 == InputConnectionType::Input && e.input.1 == 1).unwrap();
+        let start_connection_1 = connections_set
+            .iter()
+            .find(|&e| e.input.0 == InputConnectionType::Input && e.input.1 == 0)
+            .unwrap();
+        let start_connection_2 = connections_set
+            .iter()
+            .find(|&e| e.input.0 == InputConnectionType::Input && e.input.1 == 1)
+            .unwrap();
 
         let expected_1 = HashSet::from_iter(vec![
             Connection {
@@ -680,7 +757,7 @@ mod network_tests {
             Connection {
                 input: (InputConnectionType::NAND, 1),
                 output: (OutputConnectionType::NAND, 0),
-            }
+            },
         ]);
 
         let result_1 = Network::get_cycles(start_connection_1, &connections_set);
@@ -727,14 +804,17 @@ mod network_tests {
             "010000110100010001",
             "101110010101111000",
             "100001001100011000",
-            "100001001100011000"
-        ].join("");
+            "100001001100011000",
+        ]
+        .join("");
 
-        let mut result = Network::from_bitstring(&expected_network_str, input_count, output_count, 8).unwrap();
+        let mut result =
+            Network::from_bitstring(&expected_network_str, input_count, output_count, 8).unwrap();
 
         result.clean_connections();
 
-        let _output_closure = Network::get_outputs_computation_fn(output_count, &result.connections);
+        let _output_closure =
+            Network::get_outputs_computation_fn(output_count, &result.connections);
 
         assert_eq!(1, 1);
     }

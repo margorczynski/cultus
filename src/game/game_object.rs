@@ -2,7 +2,7 @@
 pub enum GameObject {
     Player,
     Wall,
-    Reward(u8)
+    Reward(u8),
 }
 
 impl GameObject {
@@ -10,17 +10,16 @@ impl GameObject {
         match c {
             '@' => Some(GameObject::Player),
             '#' => Some(GameObject::Wall),
-            _ => {
-                c.to_digit(10).map(|r| GameObject::Reward(r as u8))
-            }
+            _ => c.to_digit(10).map(|r| GameObject::Reward(r as u8)),
         }
     }
 
+    #[allow(dead_code)]
     pub fn to_char(&self) -> char {
         match *self {
             GameObject::Player => '@',
             GameObject::Wall => '#',
-            GameObject::Reward(amount) => (amount + b'0') as char
+            GameObject::Reward(amount) => (amount + b'0') as char,
         }
     }
 }
@@ -38,9 +37,23 @@ mod game_object_tests {
 
         let test_str = "@.##012#.9";
 
-        let result: Vec<Option<GameObject>> = test_str.chars().map(|c| GameObject::from_char(&c)).collect();
+        let result: Vec<Option<GameObject>> = test_str
+            .chars()
+            .map(|c| GameObject::from_char(&c))
+            .collect();
 
-        let expected = vec![Some(Player), None, Some(Wall), Some(Wall), Some(Reward(0)), Some(Reward(1)), Some(Reward(2)), Some(Wall), None, Some(Reward(9))];
+        let expected = vec![
+            Some(Player),
+            None,
+            Some(Wall),
+            Some(Wall),
+            Some(Reward(0)),
+            Some(Reward(1)),
+            Some(Reward(2)),
+            Some(Wall),
+            None,
+            Some(Reward(9)),
+        ];
 
         assert_eq!(result, expected);
     }
@@ -49,13 +62,7 @@ mod game_object_tests {
     fn to_char_test() {
         setup();
 
-        let test_game_objects = vec![
-            Wall,
-            Wall,
-            Player,
-            Reward(5),
-            Reward(3)
-        ];
+        let test_game_objects = vec![Wall, Wall, Player, Reward(5), Reward(3)];
 
         let result: String = test_game_objects.iter().map(|go| go.to_char()).collect();
 

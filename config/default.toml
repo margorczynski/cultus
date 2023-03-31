@@ -1,0 +1,17 @@
+[evolution]
+tournament_size = 5
+mutation_rate = 0.01
+elite_factor = 0.1
+
+[smart_network]
+input_count = 149
+output_count = 2
+nand_count_bits = 4
+mem_addr_bits = 8
+mem_rw_bits = 8
+connection_count = 1000
+
+[game]
+visibility_distance = 2
+max_steps = 35
+level_path = "levels/level_1.lvl"

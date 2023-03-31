@@ -3,12 +3,17 @@ use std::fmt;
 #[derive(Hash, PartialEq, Eq, Clone, Copy, PartialOrd, Ord)]
 pub struct Connection {
     pub input: (InputConnectionType, usize),
-    pub output: (OutputConnectionType, usize)
+    pub output: (OutputConnectionType, usize),
 }
 
 impl Connection {
-    pub fn from_bitstring(s: &str, input_count: usize, output_count: usize, nand_count: usize, index_bits_count: usize) -> Option<Connection> {
-
+    pub fn from_bitstring(
+        s: &str,
+        input_count: usize,
+        output_count: usize,
+        nand_count: usize,
+        index_bits_count: usize,
+    ) -> Option<Connection> {
         if s.chars().count() < 3 {
             return None;
         }
@@ -21,7 +26,7 @@ impl Connection {
         let input_type = match input_type_decimal {
             0 => InputConnectionType::Input,
             1 => InputConnectionType::NAND,
-            _ => return None
+            _ => return None,
         };
 
         let output_type_binary = &s[1..2];
@@ -30,7 +35,7 @@ impl Connection {
         let output_type = match output_type_decimal {
             0 => OutputConnectionType::Output,
             1 => OutputConnectionType::NAND,
-            _ => return None
+            _ => return None,
         };
 
         let total_bits = 2 + (2 * index_bits_count);
@@ -47,21 +52,35 @@ impl Connection {
         let output_index = usize::from_str_radix(output_index_binary, 2).unwrap();
 
         match input_type {
-            InputConnectionType::Input => if input_index >= input_count {return None},
-            InputConnectionType::NAND => if input_index >= nand_count {return None},
+            InputConnectionType::Input => {
+                if input_index >= input_count {
+                    return None;
+                }
+            }
+            InputConnectionType::NAND => {
+                if input_index >= nand_count {
+                    return None;
+                }
+            }
         };
 
         match output_type {
-            OutputConnectionType::Output => if output_index >= output_count {return None},
-            OutputConnectionType::NAND => if output_index >= nand_count {return None},
+            OutputConnectionType::Output => {
+                if output_index >= output_count {
+                    return None;
+                }
+            }
+            OutputConnectionType::NAND => {
+                if output_index >= nand_count {
+                    return None;
+                }
+            }
         };
 
-        Some(
-            Connection {
-                input: (input_type, input_index),
-                output: (output_type, output_index)
-            }
-        )
+        Some(Connection {
+            input: (input_type, input_index),
+            output: (output_type, output_index),
+        })
     }
 }
 
@@ -69,15 +88,19 @@ impl fmt::Display for Connection {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let input_type_text = match self.input.0 {
             InputConnectionType::Input => "I".to_string(),
-            InputConnectionType::NAND => "NAND".to_string()
+            InputConnectionType::NAND => "NAND".to_string(),
         };
 
         let output_type_text = match self.output.0 {
             OutputConnectionType::Output => "O".to_string(),
-            OutputConnectionType::NAND => "NAND".to_string()
+            OutputConnectionType::NAND => "NAND".to_string(),
         };
 
-        write!(f, "{}({}) -> {}({})", input_type_text, self.input.1, output_type_text, self.output.1)
+        write!(
+            f,
+            "{}({}) -> {}({})",
+            input_type_text, self.input.1, output_type_text, self.output.1
+        )
     }
 }
 
@@ -90,7 +113,7 @@ impl fmt::Debug for Connection {
 #[derive(PartialEq, Eq, Hash, Clone, Debug, Copy, PartialOrd, Ord)]
 pub enum InputConnectionType {
     Input,
-    NAND
+    NAND,
 }
 
 impl PartialEq<OutputConnectionType> for InputConnectionType {
@@ -99,8 +122,8 @@ impl PartialEq<OutputConnectionType> for InputConnectionType {
             InputConnectionType::Input => false,
             InputConnectionType::NAND => match other {
                 OutputConnectionType::Output => false,
-                OutputConnectionType::NAND => true
-            }
+                OutputConnectionType::NAND => true,
+            },
         }
     }
 }
@@ -108,7 +131,7 @@ impl PartialEq<OutputConnectionType> for InputConnectionType {
 #[derive(PartialEq, Eq, Hash, Clone, Debug, Copy, PartialOrd, Ord)]
 pub enum OutputConnectionType {
     Output,
-    NAND
+    NAND,
 }
 
 impl PartialEq<InputConnectionType> for OutputConnectionType {
@@ -117,8 +140,8 @@ impl PartialEq<InputConnectionType> for OutputConnectionType {
             OutputConnectionType::Output => false,
             OutputConnectionType::NAND => match other {
                 InputConnectionType::Input => false,
-                InputConnectionType::NAND => true
-            }
+                InputConnectionType::NAND => true,
+            },
         }
     }
 }
@@ -161,15 +184,60 @@ mod connection_tests {
         let output_index_too_big_str = "0100111111";
 
         //Results - OK
-        let result_1 = Connection::from_bitstring(expected_1_str, input_count, output_count, nand_count, index_bits_count).unwrap();
-        let result_2 = Connection::from_bitstring(expected_2_str, input_count, output_count, nand_count, index_bits_count).unwrap();
-        let result_3 = Connection::from_bitstring(expected_3_str, input_count, output_count, nand_count, index_bits_count).unwrap();
+        let result_1 = Connection::from_bitstring(
+            expected_1_str,
+            input_count,
+            output_count,
+            nand_count,
+            index_bits_count,
+        )
+        .unwrap();
+        let result_2 = Connection::from_bitstring(
+            expected_2_str,
+            input_count,
+            output_count,
+            nand_count,
+            index_bits_count,
+        )
+        .unwrap();
+        let result_3 = Connection::from_bitstring(
+            expected_3_str,
+            input_count,
+            output_count,
+            nand_count,
+            index_bits_count,
+        )
+        .unwrap();
         //Results - Wrong
-        let wrong_too_short = Connection::from_bitstring(wrong_too_short_str, input_count, output_count, nand_count, index_bits_count);
-        let wrong_empty = Connection::from_bitstring(wrong_empty_str, input_count, output_count, nand_count, index_bits_count);
-        let input_index_too_big = Connection::from_bitstring(input_index_too_big_str, input_count, output_count, nand_count, index_bits_count);
-        let output_index_too_big = Connection::from_bitstring(output_index_too_big_str, input_count, output_count, nand_count, index_bits_count);
-        
+        let wrong_too_short = Connection::from_bitstring(
+            wrong_too_short_str,
+            input_count,
+            output_count,
+            nand_count,
+            index_bits_count,
+        );
+        let wrong_empty = Connection::from_bitstring(
+            wrong_empty_str,
+            input_count,
+            output_count,
+            nand_count,
+            index_bits_count,
+        );
+        let input_index_too_big = Connection::from_bitstring(
+            input_index_too_big_str,
+            input_count,
+            output_count,
+            nand_count,
+            index_bits_count,
+        );
+        let output_index_too_big = Connection::from_bitstring(
+            output_index_too_big_str,
+            input_count,
+            output_count,
+            nand_count,
+            index_bits_count,
+        );
+
         assert_eq!(result_1, expected_1);
         assert_eq!(result_2, expected_2);
         assert_eq!(result_3, expected_3);
