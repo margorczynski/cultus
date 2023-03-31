@@ -1,8 +1,32 @@
+use std::borrow::Borrow;
 use crate::game::game_action::GameAction;
+use crate::game::game_action::GameAction::{MoveDown, MoveLeft, MoveRight, MoveUp};
 use crate::game::game_state::GameState;
+use crate::game::game_state::GameState::Finished;
 use crate::game::level::*;
+use crate::smart_network::smart_network::SmartNetwork;
 use super::game::game_object::*;
 
+
+fn play_game_with_network(smart_network: &mut SmartNetwork, initial_level: Level, visibility_distance: usize) -> usize {
+
+    let mut current_game_state = GameState::from_initial_level(initial_level);
+
+    loop {
+        match current_game_state.borrow() {
+            in_progress @ GameState::InProgress(current_level, current_step, current_points) => {
+                let state_bit_vector = game_state_to_bit_vector(&in_progress, visibility_distance).unwrap();
+                let smart_network_output = smart_network.compute_output(state_bit_vector.as_slice());
+                let smart_network_output_as_action = game_action_from_bit_vector(&smart_network_output).unwrap();
+
+                current_game_state = current_game_state.next_state(smart_network_output_as_action);
+            }
+            Finished(final_points) => {
+                return *final_points;
+            }
+        }
+    }
+}
 
 fn game_action_to_bitstring(game_action: GameAction) -> String {
     let str_res = match game_action {
@@ -13,6 +37,16 @@ fn game_action_to_bitstring(game_action: GameAction) -> String {
     };
 
     String::from(str_res)
+}
+
+fn game_action_from_bit_vector(bit_vector: &Vec<bool>) -> Option<GameAction> {
+    match bit_vector.as_slice() {
+        [false, false] => Some(MoveUp),
+        [false, true] => Some(MoveDown),
+        [true, false] => Some(MoveRight),
+        [true, true] => Some(MoveLeft),
+        _ => None
+    }
 }
 
 fn game_object_to_bitstring(game_object: Option<&GameObject>) -> String {
@@ -59,6 +93,7 @@ fn game_state_to_bit_vector(game_state: &GameState, visibility_distance: usize) 
             let min_row = (player_position.row as i32) - (visibility_distance as i32);
             let min_column = (player_position.column as i32) - (visibility_distance as i32);
 
+            //5*visible_fields_width_height*visible_fields_width_height bits
             for row in min_row..(min_row + visible_fields_width_height as i32) {
                 for column in min_column..(min_column + visible_fields_width_height as i32) {
                     let game_object_at = if row >= 0 && column >= 0 {
@@ -89,6 +124,35 @@ mod smart_network_game_adapter_tests {
     use super::*;
     use crate::common::*;
     use crate::game::game_object::GameObject::*;
+
+    #[test]
+    fn play_game_with_network_test() {
+        setup();
+
+        let input_count = 149; //12 + 12 + 125 = 149, 8 bits
+        let output_count = 2; //2 bits
+
+        let network_str = [
+            "1100", //12 NANDs
+            "000000000000000000", //I0 -> O0
+            "010000000000000000", //I0 -> NAND0
+            "010000000100000000", //I1 -> NAND0
+            "100000000000000001" //NAND0 -> O1
+        ].concat();
+
+        let test_str: &str =
+            "........\n\
+            2...@.##\n\
+            #4..3#..\n\
+            8..###..";
+
+        let mut smart_network = SmartNetwork::from_bitstring(&network_str, input_count, output_count, 4, 16, 64);
+        let level = Level::from_string(&test_str, 2);
+
+        let result = play_game_with_network(&mut smart_network, level, 2);
+
+        assert_eq!(result, 3);
+    }
 
     #[test]
     fn game_action_to_bitstring_test() {
