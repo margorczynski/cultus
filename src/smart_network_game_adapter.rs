@@ -1,4 +1,5 @@
 use std::borrow::Borrow;
+
 use crate::common::bitstring_to_bit_vector;
 use crate::game::game_action::GameAction;
 use crate::game::game_action::GameAction::{MoveDown, MoveLeft, MoveRight, MoveUp};
@@ -6,8 +7,8 @@ use crate::game::game_state::GameState;
 use crate::game::game_state::GameState::Finished;
 use crate::game::level::*;
 use crate::smart_network::smart_network::SmartNetwork;
-use super::game::game_object::*;
 
+use super::game::game_object::*;
 
 pub fn play_game_with_network(smart_network: &mut SmartNetwork, initial_level: Level, visibility_distance: usize) -> usize {
 
@@ -15,7 +16,7 @@ pub fn play_game_with_network(smart_network: &mut SmartNetwork, initial_level: L
 
     loop {
         match current_game_state.borrow() {
-            in_progress @ GameState::InProgress(current_level, current_step, current_points) => {
+            in_progress @ GameState::InProgress(_, _, _) => {
                 let state_bit_vector = game_state_to_bit_vector(&in_progress, visibility_distance).unwrap();
                 let smart_network_output = smart_network.compute_output(state_bit_vector.as_slice());
                 let smart_network_output_as_action = game_action_from_bit_vector(&smart_network_output).unwrap();
@@ -117,10 +118,10 @@ fn game_state_to_bit_vector(game_state: &GameState, visibility_distance: usize) 
 
 #[cfg(test)]
 mod smart_network_game_adapter_tests {
-    use log::debug;
-    use super::*;
     use crate::common::*;
     use crate::game::game_object::GameObject::*;
+
+    use super::*;
 
     #[test]
     fn play_game_with_network_test() {

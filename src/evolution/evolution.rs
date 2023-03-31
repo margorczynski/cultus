@@ -66,7 +66,7 @@ fn select<T: PartialEq + PartialOrd + Clone>(chromosomes_with_fitness: &HashSet<
                     .iter()
                     .take(tournament_size)
                     .max()
-                    .unwrap()
+                    .unwrap_or(chromosomes_with_fitness.first().unwrap())
                     .clone();
 
             let mut chromosomes_vec = Vec::from_iter(chromosomes_with_fitness.clone());

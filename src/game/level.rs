@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fs;
 use log::debug;
 use super::game_object::*;
 
@@ -39,6 +40,11 @@ impl Level {
             position_to_game_object_map,
             max_steps
         }
+    }
+
+    pub fn from_lvl_file(path: &str, max_steps: usize) -> Level {
+        let lvl_string = fs::read_to_string(path).unwrap();
+        Level::from_string(&lvl_string, max_steps)
     }
 
     pub fn get_size_rows(&self) -> usize {
@@ -142,6 +148,17 @@ mod level_tests {
         };
 
         assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn from_lvl_file_test() {
+        setup();
+
+        let first_level_file_path = concat!(env!("CARGO_MANIFEST_DIR"), "/levels/level_1.lvl");
+
+        let result = Level::from_lvl_file(first_level_file_path, 50);
+
+        assert_eq!(result.position_to_game_object_map.len(), 55);
     }
 
     #[test]

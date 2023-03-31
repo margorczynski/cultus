@@ -1,10 +1,10 @@
 use std::cmp::Ordering;
 use crate::evolution::chromosome::Chromosome;
 
-#[derive(Hash, Clone)]
+#[derive(Hash, Clone, Debug)]
 pub struct ChromosomeWithFitness<T: Clone> {
     pub chromosome: Chromosome,
-    fitness: T
+    pub fitness: T
 }
 
 impl<T: Clone> ChromosomeWithFitness<T> {

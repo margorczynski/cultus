@@ -1,11 +1,12 @@
 use simple_logger::SimpleLogger;
 use std::sync::Once;
+use log::LevelFilter;
 
 static INIT: Once = Once::new();
 
 pub fn setup() {
     INIT.call_once(|| {
-        SimpleLogger::new().init().unwrap();
+        SimpleLogger::new().with_level(LevelFilter::Info).init().unwrap();
     });
 }
 
@@ -19,7 +20,6 @@ pub fn bit_vector_to_bitstring(bit_vector: &Vec<bool>) -> String {
 
 #[cfg(test)]
 mod common_tests {
-    use log::debug;
     use super::*;
 
     #[test]
