@@ -1,5 +1,7 @@
 use std::collections::{HashMap, HashSet};
+
 use log::debug;
+use rayon::prelude::*;
 
 use super::connection::*;
 
@@ -178,11 +180,10 @@ impl Network {
 
             debug!("Calculate output for input: {:?}", input_bits);
 
-            let mut output: Vec<bool> = Vec::new();
-            for output_idx in 0..output_count {
+            (0..output_count).map(|output_idx| {
                 match output_index_to_input_indexes_and_gates_count_map.get(&output_idx) {
                     None => {
-                        output.push(false)
+                        false
                     },
                     Some((gate_count, input_indexes)) => {
 
@@ -198,12 +199,10 @@ impl Network {
                         }
 
                         //After cleanup it should be impossible for this to throw
-                        output.push(value_bits_stack.first().unwrap().clone());
+                        value_bits_stack.first().unwrap().clone()
                     }
                 }
-            }
-            debug!("Output: {:?}", output);
-            output
+            }).collect()
         }
     }
 
@@ -272,8 +271,9 @@ pub fn get_required_bits_count(num: usize) -> usize {
 
 #[cfg(test)]
 mod network_tests {
-    use super::*;
     use crate::common::*;
+
+    use super::*;
 
     #[test]
     fn get_required_bits_count_test() {

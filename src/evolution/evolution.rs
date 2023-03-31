@@ -1,6 +1,8 @@
 use std::collections::HashSet;
-use rand::prelude::*;
+
 use log::debug;
+use rand::prelude::*;
+
 use crate::evolution::chromosome::Chromosome;
 use crate::evolution::chromosome_with_fitness::ChromosomeWithFitness;
 
@@ -118,8 +120,9 @@ fn crossover(parents: (Chromosome, Chromosome), _crossover_rate: f32, mutation_r
 
 #[cfg(test)]
 mod evolution_tests {
-    use super::*;
     use crate::common::*;
+
+    use super::*;
 
     #[test]
     fn generate_initial_population_test() {

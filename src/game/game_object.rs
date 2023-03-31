@@ -27,9 +27,10 @@ impl GameObject {
 
 #[cfg(test)]
 mod game_object_tests {
-    use super::*;
     use crate::common::*;
     use crate::game::game_object::GameObject::*;
+
+    use super::*;
 
     #[test]
     fn from_char_test() {

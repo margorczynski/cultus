@@ -1,4 +1,4 @@
-use std::fmt::{Display, Debug, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 
 #[derive(Hash, PartialEq, Eq, Clone)]
 pub struct Chromosome {

@@ -1,8 +1,9 @@
 use std::collections::{HashMap, HashSet};
+
 use log::debug;
 
-use super::network::*;
 use super::connection::*;
+use super::network::*;
 
 pub struct SmartNetwork {
     network: Network,

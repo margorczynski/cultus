@@ -1,6 +1,7 @@
-use simple_logger::SimpleLogger;
 use std::sync::Once;
+
 use log::LevelFilter;
+use simple_logger::SimpleLogger;
 
 static INIT: Once = Once::new();
 

@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+
 use crate::evolution::chromosome::Chromosome;
 
 #[derive(Hash, Clone, Debug)]

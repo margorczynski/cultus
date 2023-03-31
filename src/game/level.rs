@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::fs;
+
 use log::debug;
+
 use super::game_object::*;
 
 #[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
@@ -115,9 +117,10 @@ impl Level {
 
 #[cfg(test)]
 mod level_tests {
-    use super::*;
     use crate::common::*;
     use crate::game::game_object::GameObject::*;
+
+    use super::*;
 
     static TEST_STR: &str =
            "......\n\

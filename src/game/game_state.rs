@@ -1,7 +1,9 @@
 use log::debug;
+
+use crate::game::game_action::GameAction;
 use crate::game::game_object::GameObject;
 use crate::game::game_state::GameState::{Finished, InProgress};
-use crate::game::game_action::GameAction;
+
 use super::level::Level;
 
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -61,8 +63,9 @@ impl GameState {
 
 #[cfg(test)]
 mod game_state_tests {
-    use super::*;
     use crate::common::*;
+
+    use super::*;
 
     static TEST_STR: &str =
            "........\n\
