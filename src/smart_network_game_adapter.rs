@@ -1,7 +1,19 @@
+use crate::game::game_action::GameAction;
 use crate::game::game_state::GameState;
 use crate::game::level::*;
 use super::game::game_object::*;
 
+
+fn game_action_to_bitstring(game_action: GameAction) -> String {
+    let str_res = match game_action {
+        GameAction::MoveUp => "00",
+        GameAction::MoveDown => "01",
+        GameAction::MoveRight => "10",
+        GameAction::MoveLeft => "11"
+    };
+
+    String::from(str_res)
+}
 
 fn game_object_to_bitstring(game_object: Option<&GameObject>) -> String {
     //Max reward is 9 - 5 bits, if first bit is 1 then it encodes reward value
@@ -77,6 +89,15 @@ mod smart_network_game_adapter_tests {
     use super::*;
     use crate::common::*;
     use crate::game::game_object::GameObject::*;
+
+    #[test]
+    fn game_action_to_bitstring_test() {
+        setup();
+        assert_eq!(game_action_to_bitstring(GameAction::MoveUp), "00");
+        assert_eq!(game_action_to_bitstring(GameAction::MoveDown), "01");
+        assert_eq!(game_action_to_bitstring(GameAction::MoveRight), "10");
+        assert_eq!(game_action_to_bitstring(GameAction::MoveLeft), "11");
+    }
 
     #[test]
     fn game_object_to_bitstring_test() {
