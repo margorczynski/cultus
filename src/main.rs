@@ -7,11 +7,17 @@ mod game;
 mod smart_network_game_adapter;
 
 use smart_network::smart_network::*;
+use evolution::evolution::generate_initial_population;
 
 fn main() {
+    let smart_network_bitstring_len = SmartNetwork::get_required_bits_for_bitstring(149, 2, 8, 8, 16, 5000);
+    let mut population = generate_initial_population(100, smart_network_bitstring_len);
+/*
+    loop {
 
-    let inputs_required = 5;
+        for chromosome in population {
 
-    //let bits_required = SmartNetwork::get_required_bits_for_bitstring();
-    println!("Hello, world!");
+            let smart_network = SmartNetwork::from_bitstring(chromosome.)
+        }
+    }*/
 }

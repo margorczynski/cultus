@@ -1,4 +1,5 @@
 use std::borrow::Borrow;
+use crate::common::bitstring_to_bit_vector;
 use crate::game::game_action::GameAction;
 use crate::game::game_action::GameAction::{MoveDown, MoveLeft, MoveRight, MoveUp};
 use crate::game::game_state::GameState;
@@ -8,7 +9,7 @@ use crate::smart_network::smart_network::SmartNetwork;
 use super::game::game_object::*;
 
 
-fn play_game_with_network(smart_network: &mut SmartNetwork, initial_level: Level, visibility_distance: usize) -> usize {
+pub fn play_game_with_network(smart_network: &mut SmartNetwork, initial_level: Level, visibility_distance: usize) -> usize {
 
     let mut current_game_state = GameState::from_initial_level(initial_level);
 
@@ -64,10 +65,6 @@ fn game_object_to_bitstring(game_object: Option<&GameObject>) -> String {
             }
         }
     }
-}
-
-fn bitstring_to_bit_vector(bitstring: &str) -> Vec<bool> {
-    bitstring.chars().map(|c| if c == '0' { false } else { true } ).collect()
 }
 
 fn game_state_to_bit_vector(game_state: &GameState, visibility_distance: usize) -> Option<Vec<bool>> {
@@ -147,7 +144,7 @@ mod smart_network_game_adapter_tests {
             8..###..";
 
         let mut smart_network = SmartNetwork::from_bitstring(&network_str, input_count, output_count, 4, 16, 64);
-        let level = Level::from_string(&test_str, 2);
+        let level = Level::from_string(&test_str, 5);
 
         let result = play_game_with_network(&mut smart_network, level, 2);
 

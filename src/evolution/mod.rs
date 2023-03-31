@@ -1,3 +1,3 @@
 pub mod evolution;
-mod chromosome;
-mod chromosome_with_fitness;
+pub mod chromosome;
+pub mod chromosome_with_fitness;
