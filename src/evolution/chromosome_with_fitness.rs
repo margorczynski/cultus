@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+
 use serde::{Deserialize, Serialize};
 
 use crate::evolution::chromosome::Chromosome;

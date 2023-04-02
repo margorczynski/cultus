@@ -3,7 +3,6 @@ use std::str::from_utf8;
 use std::sync::Arc;
 
 use futures::stream::StreamExt;
-use log::{error, info, trace};
 use lapin::Channel;
 use lapin::{
     message::DeliveryResult,
@@ -11,18 +10,24 @@ use lapin::{
     types::FieldTable,
     BasicProperties, Connection, ConnectionProperties,
 };
+use log::{error, info, trace};
 
-use crate::smart_network::smart_network::SmartNetwork;
-use crate::smart_network_game_adapter::play_game_with_network;
-use crate::evolution::chromosome_with_fitness::ChromosomeWithFitness;
 use crate::common::*;
 use crate::config::amqp_config::AmqpConfig;
-use crate::game::level::Level;
 use crate::config::game_config::GameConfig;
 use crate::config::smart_network_config::SmartNetworkConfig;
 use crate::evolution::chromosome::Chromosome;
+use crate::evolution::chromosome_with_fitness::ChromosomeWithFitness;
+use crate::game::level::Level;
+use crate::smart_network::smart_network::SmartNetwork;
+use crate::smart_network_game_adapter::play_game_with_network;
 
-pub async fn fitness_calc_node_loop(channel: Arc<Channel>, smart_network_config: Arc<SmartNetworkConfig>, game_config: Arc<GameConfig>, amqp_config: Arc<AmqpConfig>) {
+pub async fn fitness_calc_node_loop(
+    channel: Arc<Channel>,
+    smart_network_config: Arc<SmartNetworkConfig>,
+    game_config: Arc<GameConfig>,
+    amqp_config: Arc<AmqpConfig>,
+) {
     //TODO: Use config instead of magic values for queue settings
 
     info!("Starting fitness calculation processing...");
@@ -46,7 +51,6 @@ pub async fn fitness_calc_node_loop(channel: Arc<Channel>, smart_network_config:
         let level = Level::from_lvl_file(&game_config.level_path, game_config.max_steps);
 
         async move {
-
             let delivery = match delivery {
                 Ok(Some(delivery)) => delivery,
                 Ok(None) => return,
@@ -105,9 +109,8 @@ pub async fn fitness_calc_node_loop(channel: Arc<Channel>, smart_network_config:
                 .ack(BasicAckOptions::default())
                 .await
                 .expect("Chromosome with fitness ACK fail");
-
         }
     });
 
-    loop {};
+    loop {}
 }
