@@ -1,5 +1,6 @@
 use std::borrow::BorrowMut;
 use std::str::from_utf8;
+use std::sync::Arc;
 
 use futures::stream::StreamExt;
 use log::{error, info, trace};
@@ -21,14 +22,12 @@ use crate::config::game_config::GameConfig;
 use crate::config::smart_network_config::SmartNetworkConfig;
 use crate::evolution::chromosome::Chromosome;
 
-pub async fn fitness_calc_node_loop(channel: &Channel, smart_network_config: &SmartNetworkConfig, game_config: &GameConfig, amqp_config: &AmqpConfig) {
+pub async fn fitness_calc_node_loop(channel: Arc<Channel>, smart_network_config: Arc<SmartNetworkConfig>, game_config: Arc<GameConfig>, amqp_config: Arc<AmqpConfig>) {
     //TODO: Use config instead of magic values for queue settings
 
     info!("Starting fitness calculation processing...");
 
-    let level = Level::from_lvl_file(&game_config.level_path, game_config.max_steps);
-
-    let mut consumer = channel
+    let consumer = channel
         .basic_consume(
             &amqp_config.chromosome_queue_name,
             "fitness",
@@ -38,28 +37,43 @@ pub async fn fitness_calc_node_loop(channel: &Channel, smart_network_config: &Sm
         .await
         .unwrap();
 
-    while let Some(delivery) = consumer.next().await {
-        if let Ok(delivery) = delivery {
+    consumer.set_delegate(move |delivery: DeliveryResult| {
+        let channel_clone = channel.clone();
+        let smart_network_config_clone = smart_network_config.clone();
+        let game_config_clone = game_config.clone();
+        let amqp_config_clone = amqp_config.clone();
+
+        let level = Level::from_lvl_file(&game_config.level_path, game_config.max_steps);
+
+        async move {
+
+            let delivery = match delivery {
+                Ok(Some(delivery)) => delivery,
+                Ok(None) => return,
+                Err(error) => {
+                    error!("Failed to consume queue message {}", error);
+                    return;
+                }
+            };
+
             trace!("Received message: {:?}", delivery);
 
             let utf8_payload = from_utf8(delivery.data.as_slice()).unwrap();
             let chromosome = serde_json::from_str::<Chromosome>(utf8_payload).unwrap();
 
-            let mut smart_network = SmartNetwork::from_bitstring(
-                &bit_vector_to_bitstring(&chromosome.genes),
-                smart_network_config.input_count,
-                smart_network_config.output_count,
-                smart_network_config.nand_count_bits,
-                smart_network_config.mem_addr_bits,
-                smart_network_config.mem_rw_bits,
-            );
-
             let results: Vec<usize> = (0..20)
                 .map(|_| {
                     play_game_with_network(
-                        &mut smart_network,
+                        &mut SmartNetwork::from_bitstring(
+                            &bit_vector_to_bitstring(&chromosome.genes),
+                            smart_network_config_clone.input_count,
+                            smart_network_config_clone.output_count,
+                            smart_network_config_clone.nand_count_bits,
+                            smart_network_config_clone.mem_addr_bits,
+                            smart_network_config_clone.mem_rw_bits,
+                        ),
                         level.clone(),
-                        game_config.visibility_distance,
+                        game_config_clone.visibility_distance,
                     )
                 })
                 .collect();
@@ -74,10 +88,10 @@ pub async fn fitness_calc_node_loop(channel: &Channel, smart_network_config: &Sm
             );
             let serialized = serde_json::to_string(&chromosome_with_fitness).unwrap();
 
-            channel
+            channel_clone
                 .basic_publish(
                     "",
-                    &amqp_config.chromosome_with_fitness_queue_name,
+                    &amqp_config_clone.chromosome_with_fitness_queue_name,
                     BasicPublishOptions::default(),
                     serialized.as_bytes(),
                     BasicProperties::default(),
@@ -91,6 +105,9 @@ pub async fn fitness_calc_node_loop(channel: &Channel, smart_network_config: &Sm
                 .ack(BasicAckOptions::default())
                 .await
                 .expect("Chromosome with fitness ACK fail");
+
         }
-    }
+    });
+
+    loop {};
 }

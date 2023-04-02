@@ -2,6 +2,7 @@ extern crate core;
 
 use std::borrow::Borrow;
 use std::collections::HashSet;
+use std::sync::Arc;
 use std::time::Instant;
 
 use log::info;
@@ -76,6 +77,6 @@ async fn main() {
 
         evolution_node_loop(&channel, &smart_network_config, &evolution_config, &amqp_config).await;
     } else {
-        fitness_calc_node_loop(&channel, &smart_network_config, &game_config, &amqp_config).await;
+        fitness_calc_node_loop(Arc::new(channel), Arc::new(smart_network_config), Arc::new(game_config), Arc::new(amqp_config)).await;
     }
 }
