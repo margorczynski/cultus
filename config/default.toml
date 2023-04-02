@@ -1,4 +1,7 @@
+mode = "fitness"
+
 [evolution]
+initial_population_count = 100
 tournament_size = 5
 mutation_rate = 0.01
 elite_factor = 0.1

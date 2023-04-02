@@ -23,7 +23,7 @@ pub fn generate_initial_population(
     let mut rng = rand::thread_rng();
     let mut population: HashSet<Chromosome> = HashSet::new();
 
-    for _ in 0..initial_population_count {
+    while population.len() < initial_population_count {
         let random_genes = (0..chromosome_size).map(|_| rng.gen::<bool>()).collect();
 
         let chromosome = Chromosome::from_genes(random_genes);
@@ -34,7 +34,7 @@ pub fn generate_initial_population(
     population
 }
 
-pub fn evolve<T: PartialEq + PartialOrd + Clone>(
+pub fn evolve<T: PartialEq + PartialOrd + Clone + Eq>(
     chromosomes_with_fitness: &HashSet<ChromosomeWithFitness<T>>,
     selection_strategy: SelectionStrategy,
     mutation_rate: f32,
@@ -82,7 +82,7 @@ pub fn evolve<T: PartialEq + PartialOrd + Clone>(
     new_generation
 }
 
-fn select<T: PartialEq + PartialOrd + Clone>(
+fn select<T: PartialEq + PartialOrd + Clone + Eq>(
     chromosomes_with_fitness: &HashSet<ChromosomeWithFitness<T>>,
     selection_strategy: &SelectionStrategy,
 ) -> (Chromosome, Chromosome) {

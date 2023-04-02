@@ -1,6 +1,7 @@
 use std::fmt::{Debug, Display, Formatter};
+use serde::{Deserialize, Serialize};
 
-#[derive(Hash, PartialEq, Eq, Clone)]
+#[derive(Hash, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct Chromosome {
     pub genes: Vec<bool>,
 }

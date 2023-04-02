@@ -6,9 +6,11 @@ use crate::config::evolution_config::EvolutionConfig;
 use crate::config::game_config::GameConfig;
 use crate::config::smart_network_config::SmartNetworkConfig;
 
+
 #[derive(Debug, Deserialize)]
 #[allow(unused)]
 pub struct CultusConfig {
+    pub mode: String,
     pub evolution: EvolutionConfig,
     pub smart_network: SmartNetworkConfig,
     pub game: GameConfig,
@@ -21,9 +23,14 @@ impl CultusConfig {
             .add_source(Environment::with_prefix("cultus"))
             .build()?;
 
-        // Now that we're done, let's access our configuration
         info!("Using config: {:?}", s);
 
-        s.try_deserialize()
+        let deserialized: CultusConfig = s.try_deserialize()?;
+
+        if deserialized.mode == "fitness" || deserialized.mode == "evolution" {
+            Ok(deserialized)
+        } else {
+            Err(ConfigError::Message("Mode must be 'evolution' or 'fitness'".to_string()))
+        }
     }
 }
