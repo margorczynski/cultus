@@ -10,6 +10,7 @@ use lapin::{
     types::FieldTable,
     BasicProperties, Connection, ConnectionProperties,
 };
+use crate::config::amqp_config::AmqpConfig;
 use crate::config::evolution_config::EvolutionConfig;
 
 use crate::evolution::evolution::*;
@@ -19,7 +20,7 @@ use crate::config::smart_network_config::SmartNetworkConfig;
 use crate::evolution::chromosome_with_fitness;
 use crate::evolution::chromosome_with_fitness::ChromosomeWithFitness;
 
-pub async fn evolution_node_loop(channel: &Channel, smart_network_config: &SmartNetworkConfig, evolution_config: &EvolutionConfig) {
+pub async fn evolution_node_loop(channel: &Channel, smart_network_config: &SmartNetworkConfig, evolution_config: &EvolutionConfig, amqp_config: &AmqpConfig) {
 
     info!("Starting evolution processing...");
 
@@ -29,7 +30,7 @@ pub async fn evolution_node_loop(channel: &Channel, smart_network_config: &Smart
 
     let mut consumer = channel
         .basic_consume(
-            "chromosomes_with_fitness",
+            &amqp_config.chromosome_with_fitness_queue_name,
             "evolution",
             BasicConsumeOptions::default(),
             FieldTable::default(),
@@ -83,7 +84,7 @@ pub async fn evolution_node_loop(channel: &Channel, smart_network_config: &Smart
                     channel
                         .basic_publish(
                             "",
-                            "chromosomes",
+                            &amqp_config.chromosome_queue_name,
                             BasicPublishOptions::default(),
                             serialized.as_bytes(),
                             BasicProperties::default(),
@@ -101,12 +102,12 @@ pub async fn evolution_node_loop(channel: &Channel, smart_network_config: &Smart
             delivery
                 .ack(BasicAckOptions::default())
                 .await
-                .expect("basic_ack");
+                .expect("Chromosome with fitness ACK fail");
         }
     }
 }
 
-pub async fn evolution_publish_initial_population(channel: &Channel, smart_network_config: &SmartNetworkConfig, evolution_config: &EvolutionConfig) {
+pub async fn evolution_publish_initial_population(channel: &Channel, smart_network_config: &SmartNetworkConfig, evolution_config: &EvolutionConfig, amqp_config: &AmqpConfig) {
     let smart_network_bitstring_len = SmartNetwork::get_required_bits_for_bitstring(
         smart_network_config.input_count,
         smart_network_config.output_count,
@@ -121,7 +122,7 @@ pub async fn evolution_publish_initial_population(channel: &Channel, smart_netwo
     for chromosome in &initial_population {
         let serialized = serde_json::to_string(&chromosome).unwrap();
 
-        channel.basic_publish("", "chromosomes", BasicPublishOptions::default(), serialized.as_bytes(), BasicProperties::default()).await.unwrap();
+        channel.basic_publish("", &amqp_config.chromosome_queue_name, BasicPublishOptions::default(), serialized.as_bytes(), BasicProperties::default()).await.unwrap();
     }
 
     info!("Published {} chromosomes as initial population", &initial_population.len());

@@ -1,6 +1,7 @@
 use config::{Config, ConfigError, Environment, File};
 use log::info;
 use serde::Deserialize;
+use crate::config::amqp_config::AmqpConfig;
 
 use crate::config::evolution_config::EvolutionConfig;
 use crate::config::game_config::GameConfig;
@@ -14,6 +15,7 @@ pub struct CultusConfig {
     pub evolution: EvolutionConfig,
     pub smart_network: SmartNetworkConfig,
     pub game: GameConfig,
+    pub amqp: AmqpConfig
 }
 
 impl CultusConfig {

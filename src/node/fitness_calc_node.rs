@@ -15,12 +15,13 @@ use crate::smart_network::smart_network::SmartNetwork;
 use crate::smart_network_game_adapter::play_game_with_network;
 use crate::evolution::chromosome_with_fitness::ChromosomeWithFitness;
 use crate::common::*;
+use crate::config::amqp_config::AmqpConfig;
 use crate::game::level::Level;
 use crate::config::game_config::GameConfig;
 use crate::config::smart_network_config::SmartNetworkConfig;
 use crate::evolution::chromosome::Chromosome;
 
-pub async fn fitness_calc_node_loop(channel: &Channel, smart_network_config: &SmartNetworkConfig, game_config: &GameConfig) {
+pub async fn fitness_calc_node_loop(channel: &Channel, smart_network_config: &SmartNetworkConfig, game_config: &GameConfig, amqp_config: &AmqpConfig) {
     //TODO: Use config instead of magic values for queue settings
 
     info!("Starting fitness calculation processing...");
@@ -29,7 +30,7 @@ pub async fn fitness_calc_node_loop(channel: &Channel, smart_network_config: &Sm
 
     let mut consumer = channel
         .basic_consume(
-            "chromosomes",
+            &amqp_config.chromosome_queue_name,
             "fitness",
             BasicConsumeOptions::default(),
             FieldTable::default(),
@@ -76,7 +77,7 @@ pub async fn fitness_calc_node_loop(channel: &Channel, smart_network_config: &Sm
             channel
                 .basic_publish(
                     "",
-                    "chromosomes_with_fitness",
+                    &amqp_config.chromosome_with_fitness_queue_name,
                     BasicPublishOptions::default(),
                     serialized.as_bytes(),
                     BasicProperties::default(),
@@ -89,7 +90,7 @@ pub async fn fitness_calc_node_loop(channel: &Channel, smart_network_config: &Sm
             delivery
                 .ack(BasicAckOptions::default())
                 .await
-                .expect("Failed to ack chromosome message");
+                .expect("Chromosome with fitness ACK fail");
         }
     }
 }

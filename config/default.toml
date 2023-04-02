@@ -18,3 +18,8 @@ connection_count = 1000
 visibility_distance = 2
 max_steps = 35
 level_path = "levels/level_1.lvl"
+
+[amqp]
+uri = "amqp://127.0.0.1:5672"
+chromosome_queue_name = "chromosome"
+chromosome_with_fitness_queue_name = "chromosome_with_fitness"

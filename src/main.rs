@@ -38,19 +38,19 @@ async fn main() {
     let evolution_config = config.evolution;
     let smart_network_config = config.smart_network;
     let game_config = config.game;
+    let amqp_config = config.amqp;
 
     //TODO: Move to config
-    let uri = "amqp://127.0.0.1:5672";
     let options = ConnectionProperties::default()
         .with_executor(tokio_executor_trait::Tokio::current())
         .with_reactor(tokio_reactor_trait::Tokio);
 
-    let connection = Connection::connect(uri, options).await.unwrap();
+    let connection = Connection::connect(&amqp_config.uri, options).await.unwrap();
     let channel = connection.create_channel().await.unwrap();
 
     let chromosomes_queue = channel
         .queue_declare(
-            "chromosomes",
+            &amqp_config.chromosome_queue_name,
             QueueDeclareOptions::default(),
             FieldTable::default(),
         )
@@ -59,7 +59,7 @@ async fn main() {
 
     let chromosomes_with_fitness_queue = channel
         .queue_declare(
-            "chromosomes_with_fitness",
+            &amqp_config.chromosome_with_fitness_queue_name,
             QueueDeclareOptions::default(),
             FieldTable::default(),
         )
@@ -71,11 +71,11 @@ async fn main() {
 
     if config.mode == "evolution" {
         if chromosomes_queue.message_count() == 0 && chromosomes_with_fitness_queue.message_count() == 0 {
-            evolution_publish_initial_population(&channel, &smart_network_config, &evolution_config).await;
+            evolution_publish_initial_population(&channel, &smart_network_config, &evolution_config, &amqp_config).await;
         }
 
-        evolution_node_loop(&channel, &smart_network_config, &evolution_config).await;
+        evolution_node_loop(&channel, &smart_network_config, &evolution_config, &amqp_config).await;
     } else {
-        fitness_calc_node_loop(&channel, &smart_network_config, &game_config).await;
+        fitness_calc_node_loop(&channel, &smart_network_config, &game_config, &amqp_config).await;
     }
 }
