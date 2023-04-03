@@ -1,6 +1,9 @@
+use std::borrow::Borrow;
 use std::collections::HashSet;
 use std::str::from_utf8;
 use std::time::{Duration, Instant};
+use std::fs::File;
+use std::io::Write;
 
 use futures::stream::StreamExt;
 use lapin::message::Delivery;
@@ -13,6 +16,7 @@ use lapin::{
 };
 use log::{debug, error, info, trace};
 use rayon::prelude::*;
+use textplots::{Chart, ColorPlot, Shape};
 
 use crate::config::amqp_config::AmqpConfig;
 use crate::config::evolution_config::EvolutionConfig;
@@ -22,6 +26,7 @@ use crate::evolution::chromosome_with_fitness::ChromosomeWithFitness;
 use crate::evolution::evolution::SelectionStrategy::Tournament;
 use crate::evolution::evolution::*;
 use crate::smart_network::smart_network::SmartNetwork;
+
 
 pub async fn evolution_node_loop(
     channel: &Channel,
@@ -45,6 +50,14 @@ pub async fn evolution_node_loop(
         .await
         .unwrap();
 
+    let mut generation_count: usize = 0;
+
+    let term = console::Term::stdout();
+    term.hide_cursor().unwrap();
+    term.clear_screen().unwrap();
+
+    let mut fitness_average_points: Vec<(f32, f32)> = vec![];
+
     while let Some(delivery) = consumer.next().await {
         trace!("Received message: {:?}", delivery);
         if let Ok(delivery) = delivery {
@@ -53,6 +66,7 @@ pub async fn evolution_node_loop(
             //TODO: Not initial pop count - change
             if deliveries_buffer.len() == evolution_config.initial_population_count {
                 let evolve_start = Instant::now();
+                info!("------- GENERATION {} -------", generation_count);
                 let population_collected: Vec<ChromosomeWithFitness<usize>> = deliveries_buffer
                     .par_iter()
                     .map(|d| {
@@ -67,18 +81,42 @@ pub async fn evolution_node_loop(
                     .map(|c| c.fitness)
                     .sum::<usize>() as f64;
 
-                let fitness_max = population_collected
+                let top_chromosome = population_collected
                     .par_iter()
-                    .max()
+                    .max();
+
+                let fitness_max = top_chromosome
                     .map(|c| c.fitness as i64)
                     .unwrap_or(-9999);
 
                 let fitness_avg = fitness_sum / population_collected.len() as f64;
 
+                fitness_average_points.push((generation_count as f32, fitness_avg as f32));
+
+                let red_color = rgb::RGB8::new(0xFF, 0x00, 0x00);
+
+                term.move_cursor_to(0, 0).unwrap();
+                Chart::new_with_y_range(200, 100, 0., (fitness_average_points.len() + 1 as usize) as f32, 0.0, fitness_max as f32)
+                    .linecolorplot(&Shape::Lines(fitness_average_points.as_slice()), red_color)
+                    .nice();
+
                 info!(
-                    "Generating new population from population - fitness max: {}, average: {}",
-                    fitness_max, fitness_avg
+                    "GEN={} ::: fitness_max={}, fitness_average={}",
+                    generation_count, fitness_max, fitness_avg
                 );
+
+                if evolution_config.persist_top_chromosome {
+                    match top_chromosome {
+                        None => {
+                            error!("GEN={} ::: No max fitness chromosome to persist", generation_count);
+                        }
+                        Some(chromosome) => {
+                            let mut file = File::create("top_chromosomes").unwrap();
+                            let chromosome_str = format!("{},{}\n", chromosome.chromosome, chromosome.fitness);
+                            file.write(chromosome_str.as_bytes()).unwrap();
+                        }
+                    }
+                }
 
                 let evolve_new_generation_start = Instant::now();
                 let evolved = evolve(
@@ -88,7 +126,7 @@ pub async fn evolution_node_loop(
                     evolution_config.elite_factor,
                 );
 
-                info!("Evolving generation finished in: {:?}. Generating the new chromosomes took: {:?}", evolve_start.elapsed(), evolve_new_generation_start.elapsed());
+                info!("GEN={} ::: evolve_elapsed={:?}. evolve_new_generation={:?}", generation_count, evolve_start.elapsed(), evolve_new_generation_start.elapsed());
 
                 for chromosome in evolved {
                     let serialized = serde_json::to_string(&chromosome).unwrap();
@@ -108,8 +146,8 @@ pub async fn evolution_node_loop(
                 }
 
                 info!(
-                    "Published new population to queue. Time elapsed since last population was generated: {:?}",
-                    start.elapsed()
+                    "GEN={} ::: since_last_generation_evolve_elapsed={:?}",
+                    generation_count, start.elapsed()
                 );
                 start = Instant::now();
 
@@ -121,6 +159,8 @@ pub async fn evolution_node_loop(
                 }
 
                 deliveries_buffer.clear();
+
+                generation_count += 1;
             }
         }
     }

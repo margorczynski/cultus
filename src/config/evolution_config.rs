@@ -7,4 +7,5 @@ pub struct EvolutionConfig {
     pub tournament_size: usize,
     pub mutation_rate: f32,
     pub elite_factor: f32,
+    pub persist_top_chromosome: bool
 }

@@ -5,6 +5,7 @@ initial_population_count = 200
 tournament_size = 10
 mutation_rate = 0.05
 elite_factor = 0.05
+persist_top_chromosome = false
 
 [smart_network]
 input_count = 149

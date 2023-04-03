@@ -63,6 +63,12 @@ pub async fn fitness_calc_node_loop(
         all_points_amount
     );
 
+    let level_1_max = levels[0].get_point_amount();
+
+    let max_average = (0..80).map(|idx| (level_1_max as f64 * (idx+1) as f64) / 80.0f64).sum::<f64>() / 80.0f64;
+
+    info!("Max average: {}", max_average);
+
     consumer.set_delegate(move |delivery: DeliveryResult| {
         let channel_clone = channel.clone();
         let smart_network_config_clone = smart_network_config.clone();
@@ -87,10 +93,10 @@ pub async fn fitness_calc_node_loop(
             let chromosome = serde_json::from_str::<Chromosome>(utf8_payload).unwrap();
 
             //TODO: Take this from config
-            let levels_idxs_to_times_to_play = HashMap::from([(1, 50), (2, 10), (3, 10)]);
+            let levels_idxs_to_times_to_play = HashMap::from([(1, 80)]);
 
             //TODO: Refactor this
-            let results: Vec<usize> = play_levels(
+            let results: Vec<f64> = play_levels(
                 levels_idxs_to_times_to_play,
                 &chromosome,
                 &smart_network_config_clone,
@@ -98,10 +104,9 @@ pub async fn fitness_calc_node_loop(
                 &levels_clone,
             );
 
-            let results_sum: usize = results.iter().sum();
+            let weighted_results_sum: f64 = results.iter().sum();
             let results_len = results.len();
-            //Use max or average?
-            let fitness = results_sum as f64 / results_len as f64;
+            let fitness = weighted_results_sum / results_len as f64;
 
             let chromosome_with_fitness = ChromosomeWithFitness::from_chromosome_and_fitness(
                 chromosome.clone(),
@@ -138,7 +143,7 @@ fn play_levels(
     smart_network_config: &SmartNetworkConfig,
     game_config: &GameConfig,
     levels: &Vec<Level>,
-) -> Vec<usize> {
+) -> Vec<f64> {
     let mut smart_network = SmartNetwork::from_bitstring(
         &bit_vector_to_bitstring(&chromosome.genes),
         smart_network_config.input_count,
@@ -152,15 +157,18 @@ fn play_levels(
         .iter()
         .map(|(&level_idx, &times)| {
             (0..times)
-                .map(|_| {
-                    play_game_with_network(
+                .map(|idx| {
+                    let multiplier = (idx + 1) as f64 / times as f64;
+                    let result = play_game_with_network(
                         &mut smart_network,
                         levels[level_idx - 1].clone(),
                         game_config.visibility_distance,
-                    )
+                    );
+
+                    result as f64 * multiplier
                 })
-                .collect::<Vec<usize>>()
+                .collect::<Vec<f64>>()
         })
         .flatten()
-        .collect::<Vec<usize>>()
+        .collect::<Vec<f64>>()
 }
