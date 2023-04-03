@@ -21,6 +21,10 @@ max_steps = 35
 levels_dir_path = "levels/"
 
 [amqp]
-uri = "amqp://127.0.0.1:5672"
+host = "0.0.0.0"
+port = "5672"
+vhost = "cultus"
+username = "mac"
+password = "pass"
 chromosome_queue_name = "chromosome"
 chromosome_with_fitness_queue_name = "chromosome_with_fitness"

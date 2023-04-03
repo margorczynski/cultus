@@ -11,6 +11,7 @@ use lapin::{
     types::FieldTable,
     BasicProperties, Connection, ConnectionProperties,
 };
+use lapin::auth::Credentials;
 use log::info;
 use rayon::prelude::*;
 
@@ -42,12 +43,13 @@ async fn main() {
     let game_config = config.game;
     let amqp_config = config.amqp;
 
-    //TODO: Move to config
+    let rabbit_uri = format!("amqp://{}:{}@{}:{}/{}", amqp_config.username, amqp_config.password, amqp_config.host, amqp_config.port, amqp_config.vhost);
+
     let options = ConnectionProperties::default()
         .with_executor(tokio_executor_trait::Tokio::current())
         .with_reactor(tokio_reactor_trait::Tokio);
 
-    let connection = Connection::connect(&amqp_config.uri, options)
+    let connection = Connection::connect(&rabbit_uri, options)
         .await
         .unwrap();
     let channel = connection.create_channel().await.unwrap();
