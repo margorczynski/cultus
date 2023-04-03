@@ -11,7 +11,8 @@ use lapin::{
     types::FieldTable,
     BasicProperties, Connection, ConnectionProperties,
 };
-use log::{error, info, trace};
+use log::{debug, error, info, trace};
+use rayon::prelude::*;
 
 use crate::config::amqp_config::AmqpConfig;
 use crate::config::evolution_config::EvolutionConfig;
@@ -51,8 +52,9 @@ pub async fn evolution_node_loop(
 
             //TODO: Not initial pop count - change
             if deliveries_buffer.len() == evolution_config.initial_population_count {
+                let evolve_start = Instant::now();
                 let population_collected: Vec<ChromosomeWithFitness<usize>> = deliveries_buffer
-                    .iter()
+                    .par_iter()
                     .map(|d| {
                         let utf8_payload = from_utf8(d.data.as_slice()).unwrap();
 
@@ -61,12 +63,12 @@ pub async fn evolution_node_loop(
                     .collect();
 
                 let fitness_sum = population_collected
-                    .iter()
+                    .par_iter()
                     .map(|c| c.fitness)
                     .sum::<usize>() as f64;
 
                 let fitness_max = population_collected
-                    .iter()
+                    .par_iter()
                     .max()
                     .map(|c| c.fitness as i64)
                     .unwrap_or(-9999);
@@ -78,12 +80,15 @@ pub async fn evolution_node_loop(
                     fitness_max, fitness_avg
                 );
 
+                let evolve_new_generation_start = Instant::now();
                 let evolved = evolve(
                     &HashSet::from_iter(population_collected),
                     Tournament(evolution_config.tournament_size),
                     evolution_config.mutation_rate,
                     evolution_config.elite_factor,
                 );
+
+                info!("Evolving generation finished in: {:?}. Generating the new chromosomes took: {:?}", evolve_start.elapsed(), evolve_new_generation_start.elapsed());
 
                 for chromosome in evolved {
                     let serialized = serde_json::to_string(&chromosome).unwrap();
@@ -103,7 +108,7 @@ pub async fn evolution_node_loop(
                 }
 
                 info!(
-                    "Published new population to queue. Time elapsed since last publish: {:?}",
+                    "Published new population to queue. Time elapsed since last population was generated: {:?}",
                     start.elapsed()
                 );
                 start = Instant::now();

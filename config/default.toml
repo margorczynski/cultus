@@ -1,10 +1,10 @@
 mode = "fitness"
 
 [evolution]
-initial_population_count = 100
-tournament_size = 5
-mutation_rate = 0.01
-elite_factor = 0.1
+initial_population_count = 200
+tournament_size = 10
+mutation_rate = 0.05
+elite_factor = 0.05
 
 [smart_network]
 input_count = 149
@@ -12,7 +12,7 @@ output_count = 2
 nand_count_bits = 6
 mem_addr_bits = 8
 mem_rw_bits = 8
-connection_count = 1000
+connection_count = 10000
 
 [game]
 visibility_distance = 2

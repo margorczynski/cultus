@@ -2,6 +2,8 @@ use std::collections::HashSet;
 
 use log::debug;
 use rand::prelude::*;
+use rayon::prelude::*;
+use std::time::{Duration, Instant};
 
 use crate::evolution::chromosome::Chromosome;
 use crate::evolution::chromosome_with_fitness::ChromosomeWithFitness;
@@ -34,7 +36,7 @@ pub fn generate_initial_population(
     population
 }
 
-pub fn evolve<T: PartialEq + PartialOrd + Clone + Eq>(
+pub fn evolve<T: PartialEq + PartialOrd + Clone + Eq + Send>(
     chromosomes_with_fitness: &HashSet<ChromosomeWithFitness<T>>,
     selection_strategy: SelectionStrategy,
     mutation_rate: f32,
@@ -50,10 +52,12 @@ pub fn evolve<T: PartialEq + PartialOrd + Clone + Eq>(
     let mut chromosomes_with_fitness_ordered: Vec<ChromosomeWithFitness<T>> =
         chromosomes_with_fitness.into_iter().cloned().collect();
 
-    chromosomes_with_fitness_ordered.sort();
+    chromosomes_with_fitness_ordered.sort_unstable();
+
+    let start_1 = Instant::now();
 
     let elite: HashSet<Chromosome> = chromosomes_with_fitness_ordered
-        .iter()
+        .par_iter()
         .rev()
         .take(elite_amount)
         .cloned()
@@ -62,9 +66,22 @@ pub fn evolve<T: PartialEq + PartialOrd + Clone + Eq>(
 
     new_generation.extend(elite);
 
+    let start_2 = Instant::now();
+
+    let offspring = (0..((chromosomes_with_fitness.len() - new_generation.len()) / 2))
+        .into_par_iter()
+        .map(|_| {
+            let parents = select(chromosomes_with_fitness, &selection_strategy);
+            let (offspring_1, offspring_2) = crossover(parents, 1.0f32, mutation_rate);
+            vec![offspring_1, offspring_2]
+        }).flatten();
+
+    new_generation.par_extend(offspring);
+
+    //Below is a fallback if the above would generate duplicates of already existing chromosomes
+    //TODO: Use Vec instead and allow duplicates?
     while new_generation.len() != chromosomes_with_fitness.len() {
         let parents = select(chromosomes_with_fitness, &selection_strategy);
-
         let offspring = crossover(parents, 1.0f32, mutation_rate);
 
         new_generation.insert(offspring.0);
@@ -82,7 +99,7 @@ pub fn evolve<T: PartialEq + PartialOrd + Clone + Eq>(
     new_generation
 }
 
-fn select<T: PartialEq + PartialOrd + Clone + Eq>(
+fn select<T: PartialEq + PartialOrd + Clone + Eq + Send>(
     chromosomes_with_fitness: &HashSet<ChromosomeWithFitness<T>>,
     selection_strategy: &SelectionStrategy,
 ) -> (Chromosome, Chromosome) {

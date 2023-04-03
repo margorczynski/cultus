@@ -29,8 +29,6 @@ pub async fn fitness_calc_node_loop(
     game_config: Arc<GameConfig>,
     amqp_config: Arc<AmqpConfig>,
 ) {
-    //TODO: Use config instead of magic values for queue settings
-
     info!("Starting fitness calculation processing...");
 
     let consumer = channel
@@ -88,10 +86,11 @@ pub async fn fitness_calc_node_loop(
             let utf8_payload = from_utf8(delivery.data.as_slice()).unwrap();
             let chromosome = serde_json::from_str::<Chromosome>(utf8_payload).unwrap();
 
-            let levels_idxs_to_times_to_play = HashMap::from([(1, 30), (2, 20), (3, 20)]);
+            //TODO: Take this from config
+            let levels_idxs_to_times_to_play = HashMap::from([(1, 50), (2, 10), (3, 10)]);
 
             //TODO: Refactor this
-            let results: Vec<usize> = play_level_times(
+            let results: Vec<usize> = play_levels(
                 levels_idxs_to_times_to_play,
                 &chromosome,
                 &smart_network_config_clone,
@@ -133,7 +132,7 @@ pub async fn fitness_calc_node_loop(
     loop {}
 }
 
-fn play_level_times(
+fn play_levels(
     level_idxs_to_times: HashMap<usize, usize>,
     chromosome: &Chromosome,
     smart_network_config: &SmartNetworkConfig,
