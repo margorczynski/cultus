@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
 
-use log::debug;
+use log::{debug, info};
 
 use super::game_object::*;
 
@@ -41,6 +41,7 @@ impl Level {
     }
 
     pub fn from_lvl_file(path: &str, max_steps: usize) -> Level {
+        info!("Reading level from file: {}", path);
         let lvl_string = fs::read_to_string(path).unwrap();
         Level::from_string(&lvl_string, max_steps)
     }

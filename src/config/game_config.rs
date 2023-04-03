@@ -5,5 +5,5 @@ use serde::Deserialize;
 pub struct GameConfig {
     pub visibility_distance: usize,
     pub max_steps: usize,
-    pub level_path: String,
+    pub levels_dir_path: String,
 }

@@ -1,4 +1,5 @@
 use std::borrow::BorrowMut;
+use std::collections::HashMap;
 use std::str::from_utf8;
 use std::sync::Arc;
 
@@ -42,13 +43,35 @@ pub async fn fitness_calc_node_loop(
         .await
         .unwrap();
 
+    let level_paths = (1..4).map(|lvl| {
+        vec![
+            game_config.levels_dir_path.clone(),
+            "level_".to_string(),
+            lvl.to_string(),
+            ".lvl".to_string(),
+        ]
+        .concat()
+    });
+
+    let levels: Vec<Level> = level_paths
+        .map(|path| Level::from_lvl_file(&path, game_config.max_steps))
+        .collect();
+
+    let all_points_amount: usize = levels.iter().map(|lvl| lvl.get_point_amount()).sum();
+
+    info!(
+        "Loaded {} levels with total amount of points: {}",
+        levels.len(),
+        all_points_amount
+    );
+
     consumer.set_delegate(move |delivery: DeliveryResult| {
         let channel_clone = channel.clone();
         let smart_network_config_clone = smart_network_config.clone();
         let game_config_clone = game_config.clone();
         let amqp_config_clone = amqp_config.clone();
 
-        let level = Level::from_lvl_file(&game_config.level_path, game_config.max_steps);
+        let levels_clone = levels.clone();
 
         async move {
             let delivery = match delivery {
@@ -65,26 +88,21 @@ pub async fn fitness_calc_node_loop(
             let utf8_payload = from_utf8(delivery.data.as_slice()).unwrap();
             let chromosome = serde_json::from_str::<Chromosome>(utf8_payload).unwrap();
 
-            let results: Vec<usize> = (0..20)
-                .map(|_| {
-                    play_game_with_network(
-                        &mut SmartNetwork::from_bitstring(
-                            &bit_vector_to_bitstring(&chromosome.genes),
-                            smart_network_config_clone.input_count,
-                            smart_network_config_clone.output_count,
-                            smart_network_config_clone.nand_count_bits,
-                            smart_network_config_clone.mem_addr_bits,
-                            smart_network_config_clone.mem_rw_bits,
-                        ),
-                        level.clone(),
-                        game_config_clone.visibility_distance,
-                    )
-                })
-                .collect();
+            let levels_idxs_to_times_to_play = HashMap::from([(1, 30), (2, 20), (3, 20)]);
+
+            //TODO: Refactor this
+            let results: Vec<usize> = play_level_times(
+                levels_idxs_to_times_to_play,
+                &chromosome,
+                &smart_network_config_clone,
+                &game_config_clone,
+                &levels_clone,
+            );
 
             let results_sum: usize = results.iter().sum();
+            let results_len = results.len();
             //Use max or average?
-            let fitness = results_sum as f64 / results.len() as f64;
+            let fitness = results_sum as f64 / results_len as f64;
 
             let chromosome_with_fitness = ChromosomeWithFitness::from_chromosome_and_fitness(
                 chromosome.clone(),
@@ -113,4 +131,37 @@ pub async fn fitness_calc_node_loop(
     });
 
     loop {}
+}
+
+fn play_level_times(
+    level_idxs_to_times: HashMap<usize, usize>,
+    chromosome: &Chromosome,
+    smart_network_config: &SmartNetworkConfig,
+    game_config: &GameConfig,
+    levels: &Vec<Level>,
+) -> Vec<usize> {
+    let mut smart_network = SmartNetwork::from_bitstring(
+        &bit_vector_to_bitstring(&chromosome.genes),
+        smart_network_config.input_count,
+        smart_network_config.output_count,
+        smart_network_config.nand_count_bits,
+        smart_network_config.mem_addr_bits,
+        smart_network_config.mem_rw_bits,
+    );
+
+    level_idxs_to_times
+        .iter()
+        .map(|(&level_idx, &times)| {
+            (0..times)
+                .map(|_| {
+                    play_game_with_network(
+                        &mut smart_network,
+                        levels[level_idx - 1].clone(),
+                        game_config.visibility_distance,
+                    )
+                })
+                .collect::<Vec<usize>>()
+        })
+        .flatten()
+        .collect::<Vec<usize>>()
 }
