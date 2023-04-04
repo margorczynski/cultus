@@ -55,9 +55,9 @@ pub async fn evolution_node_loop(
 
     let mut generation_count: usize = 0;
 
-    let term = console::Term::stdout();
+/*    let term = console::Term::stdout();
     term.hide_cursor().unwrap();
-    term.clear_screen().unwrap();
+    term.clear_screen().unwrap();*/
 
     let mut fitness_average_points: Vec<(f32, f32)> = vec![];
 
@@ -104,8 +104,8 @@ pub async fn evolution_node_loop(
                     .nice();*/
 
                 info!(
-                    "GEN={} ::: fitness_max={}, fitness_average={}",
-                    generation_count, fitness_max, fitness_avg
+                    "GEN={} ::: fitness_max={}, fitness_average={}, chromosome_count={}",
+                    generation_count, fitness_max, fitness_avg, deliveries_buffer.len()
                 );
 
                 if evolution_config.persist_top_chromosome {
@@ -148,6 +148,8 @@ pub async fn evolution_node_loop(
                         .unwrap();
                 }
 
+                publish_channel.wait_for_confirms().await.unwrap();
+
                 info!(
                     "GEN={} ::: since_last_generation_evolve_elapsed={:?}",
                     generation_count, start.elapsed()
@@ -160,6 +162,8 @@ pub async fn evolution_node_loop(
                         .await
                         .expect("Chromosome with fitness ACK fail");
                 }
+
+                publish_channel.wait_for_confirms().await.unwrap();
 
                 deliveries_buffer.clear();
 
@@ -205,6 +209,8 @@ pub async fn evolution_publish_initial_population(
             .await
             .unwrap();
     }
+
+    channel.wait_for_confirms().await.unwrap();
 
     info!(
         "Published {} chromosomes as initial population",

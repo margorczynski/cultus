@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use log::debug;
 use rand::prelude::*;
+use rand::{Rng, SeedableRng};
 use rayon::prelude::*;
 use std::time::{Duration, Instant};
 
@@ -22,8 +23,18 @@ pub fn generate_initial_population(
         initial_population_count, chromosome_size
     );
 
-    let mut rng = rand::thread_rng();
+    let mut rng = StdRng::from_entropy();
     let mut population: HashSet<Chromosome> = HashSet::new();
+
+    //TODO: Refactor this
+    let res = (0..initial_population_count).into_par_iter().map(|_| {
+        let mut rng_clone = rng.clone();
+        let random_genes= (0..chromosome_size).map(|_| rng_clone.gen::<bool>()).collect();
+
+        Chromosome::from_genes(random_genes)
+    });
+
+    population.par_extend(res);
 
     while population.len() < initial_population_count {
         let random_genes = (0..chromosome_size).map(|_| rng.gen::<bool>()).collect();
