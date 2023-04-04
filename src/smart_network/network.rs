@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
-use log::debug;
+use log::{debug, info, trace};
+use tokio::time::Instant;
 
 use super::connection::*;
 
@@ -129,6 +130,8 @@ impl Network {
 
         let mut cleaned_up_connections: HashSet<Connection> = self.connections.clone();
 
+        //Now we require that input_idx < output_idx so that making cycling connections should be impossible (they only go "forward")
+/*        let get_cycles_start = Instant::now();
         //Go through all the input connections and for each get the connections which cycle when exploring starting from that input
         let cycle_connections = cleaned_up_connections
             .iter()
@@ -136,13 +139,17 @@ impl Network {
             .map(|input_conn| Network::get_cycles(input_conn, &cleaned_up_connections))
             .reduce(|acc, e| acc.union(&e).copied().collect())
             .unwrap();
+        info!("get_cycles_elapsed={:?}", get_cycles_start.elapsed());
 
+        let remove_cycles_start = Instant::now();
         //Remove the cycling connections
         cleaned_up_connections = cleaned_up_connections
             .difference(&cycle_connections)
             .cloned()
             .collect();
-
+        info!("remove_cycles_elapsed={:?}", remove_cycles_start.elapsed());
+*/
+        let remove_incorrect_start = Instant::now();
         //Remove connections of gates where the number of inputs or outputs is incorrect
         //This is done in an iterative manner until there are no more connections to remove
         let mut connections_to_remove: HashSet<Connection> = HashSet::new();
@@ -180,6 +187,7 @@ impl Network {
 
             connections_to_remove.clear();
         }
+        trace!("remove_incorrect_elapsed={:?}", remove_incorrect_start.elapsed());
 
         debug!(
             "Connections after cleanup count: {}",
@@ -496,10 +504,6 @@ mod network_tests {
             //Test cycle removal
             Connection {
                 input: (InputConnectionType::NAND, 4),
-                output: (OutputConnectionType::NAND, 9),
-            },
-            Connection {
-                input: (InputConnectionType::NAND, 9),
                 output: (OutputConnectionType::NAND, 9),
             },
             Connection {

@@ -77,6 +77,20 @@ impl Connection {
             }
         };
 
+        match input_type {
+            InputConnectionType::Input => {}
+            InputConnectionType::NAND => {
+                match output_type {
+                    OutputConnectionType::Output => {}
+                    OutputConnectionType::NAND => {
+                        if input_index >= output_index {
+                            return None;
+                        }
+                    }
+                }
+            }
+        }
+
         Some(Connection {
             input: (input_type, input_index),
             output: (output_type, output_index),

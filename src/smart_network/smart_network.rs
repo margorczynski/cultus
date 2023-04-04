@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
-use log::debug;
+use log::{debug, info, trace};
+use tokio::time::Instant;
 
 use super::network::*;
 
@@ -27,17 +28,23 @@ impl SmartNetwork {
         let total_input_count = input_count + memory_rw_bits;
         let total_output_count = output_count + (2 * memory_addr_bits) + memory_rw_bits;
 
+        let from_bitstring_start = Instant::now();
         let mut network =
             Network::from_bitstring(s, total_input_count, total_output_count, nand_count_bits)
                 .unwrap()
                 .clone();
+        trace!("from_bitstring_elapsed={:?}", from_bitstring_start.elapsed());
 
+        let clean_connections_start = Instant::now();
         network.clean_connections();
+        trace!("clean_connections_elapsed={:?}", clean_connections_start.elapsed());
 
+        let get_outputs_computation_fn_start = Instant::now();
         let output_fn = Box::new(Network::get_outputs_computation_fn(
             total_output_count,
             &network.connections,
         ));
+        trace!("get_outputs_computation_fn_elapsed={:?}", get_outputs_computation_fn_start.elapsed());
 
         SmartNetwork {
             network,
@@ -139,6 +146,8 @@ impl SmartNetwork {
 #[cfg(test)]
 mod smart_network_tests {
     use super::*;
+    use std::collections::HashSet;
+    use crate::smart_network::connection::*;
 
     #[test]
     fn from_bitstring_test() {

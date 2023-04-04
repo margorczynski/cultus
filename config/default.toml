@@ -1,7 +1,7 @@
 mode = "fitness"
 
 [evolution]
-initial_population_count = 128
+initial_population_count = 192
 tournament_size = 8
 mutation_rate = 0.05
 elite_factor = 0.05
@@ -10,15 +10,16 @@ persist_top_chromosome = false
 [smart_network]
 input_count = 149
 output_count = 2
-nand_count_bits = 8
+nand_count_bits = 12
 mem_addr_bits = 8
 mem_rw_bits = 8
-connection_count = 1000
+connection_count = 20000
 
 [game]
 visibility_distance = 2
 max_steps = 30
 levels_dir_path = "levels/"
+level_to_times_to_play = { 1 = 80, 2 = 80}
 
 [amqp]
 host = "0.0.0.0"

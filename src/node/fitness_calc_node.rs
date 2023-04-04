@@ -12,6 +12,7 @@ use lapin::{
 };
 use lapin::options::BasicQosOptions;
 use log::{error, info, trace};
+use tokio::time::Instant;
 
 use crate::common::*;
 use crate::config::amqp_config::AmqpConfig;
@@ -48,11 +49,11 @@ pub async fn fitness_calc_node_loop(
         .await
         .unwrap();
 
-    let level_paths = (1..4).map(|lvl| {
+    let level_paths = game_config.level_to_times_to_play.iter().map(|(&lvl_idx, _)| {
         vec![
             game_config.levels_dir_path.clone(),
             "level_".to_string(),
-            lvl.to_string(),
+            lvl_idx.to_string(),
             ".lvl".to_string(),
         ]
         .concat()
@@ -62,19 +63,11 @@ pub async fn fitness_calc_node_loop(
         .map(|path| Level::from_lvl_file(&path, game_config.max_steps))
         .collect();
 
+    levels.iter().enumerate().for_each(|(idx, lvl)| {
+        info!("size_rows={}, size_columns={}, player_pos={:?}, total_points={}", lvl.get_size_rows(), lvl.get_size_column(), lvl.get_player_position() ,lvl.get_point_amount())
+    });
+
     let all_points_amount: usize = levels.iter().map(|lvl| lvl.get_point_amount()).sum();
-
-    info!(
-        "Loaded {} levels with total amount of points: {}",
-        levels.len(),
-        all_points_amount
-    );
-
-    let level_1_max = levels[0].get_point_amount();
-
-    let max_average = (0..80).map(|idx| (level_1_max as f64 * (idx+1) as f64) / 80.0f64).sum::<f64>() / 80.0f64;
-
-    info!("Max average: {}", max_average);
 
     consumer.set_delegate(move |delivery: DeliveryResult| {
         let publish_channel_clone = publish_channel.clone();
@@ -99,12 +92,8 @@ pub async fn fitness_calc_node_loop(
             let utf8_payload = from_utf8(delivery.data.as_slice()).unwrap();
             let chromosome = serde_json::from_str::<Chromosome>(utf8_payload).unwrap();
 
-            //TODO: Take this from config
-            let levels_idxs_to_times_to_play = HashMap::from([(1, 80)]);
-
-            //TODO: Refactor this
             let results: Vec<f64> = play_levels(
-                levels_idxs_to_times_to_play,
+                game_config_clone.level_to_times_to_play.clone(),
                 &chromosome,
                 &smart_network_config_clone,
                 &game_config_clone,
@@ -151,6 +140,8 @@ fn play_levels(
     game_config: &GameConfig,
     levels: &Vec<Level>,
 ) -> Vec<f64> {
+
+    let smart_network_start = Instant::now();
     let mut smart_network = SmartNetwork::from_bitstring(
         &bit_vector_to_bitstring(&chromosome.genes),
         smart_network_config.input_count,
@@ -159,8 +150,9 @@ fn play_levels(
         smart_network_config.mem_addr_bits,
         smart_network_config.mem_rw_bits,
     );
-
-    level_idxs_to_times
+    info!("construct_smart_network_elapsed={:?}", smart_network_start.elapsed());
+    let playing_start = Instant::now();
+    let res = level_idxs_to_times
         .iter()
         .map(|(&level_idx, &times)| {
             (0..times)
@@ -177,5 +169,7 @@ fn play_levels(
                 .collect::<Vec<f64>>()
         })
         .flatten()
-        .collect::<Vec<f64>>()
+        .collect::<Vec<f64>>();
+    info!("play_all_games_elapsed={:?}", playing_start.elapsed());
+    res
 }
