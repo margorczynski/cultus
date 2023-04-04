@@ -12,6 +12,7 @@ use lapin::{
     BasicProperties, Connection, ConnectionProperties,
 };
 use lapin::auth::Credentials;
+use lapin::options::BasicQosOptions;
 use log::info;
 use rayon::prelude::*;
 
@@ -52,6 +53,7 @@ async fn main() {
     let connection = Connection::connect(&rabbit_uri, options)
         .await
         .unwrap();
+
     let channel = connection.create_channel().await.unwrap();
 
     let chromosomes_queue = channel
@@ -86,7 +88,7 @@ async fn main() {
             && chromosomes_with_fitness_queue.message_count() == 0
         {
             evolution_publish_initial_population(
-                &channel,
+                &connection,
                 &smart_network_config,
                 &evolution_config,
                 &amqp_config,
@@ -95,7 +97,7 @@ async fn main() {
         }
 
         evolution_node_loop(
-            &channel,
+            &connection,
             &smart_network_config,
             &evolution_config,
             &amqp_config,
@@ -103,7 +105,7 @@ async fn main() {
         .await;
     } else {
         fitness_calc_node_loop(
-            Arc::new(channel),
+            &connection,
             Arc::new(smart_network_config),
             Arc::new(game_config),
             Arc::new(amqp_config),

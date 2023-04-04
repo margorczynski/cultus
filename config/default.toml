@@ -22,9 +22,10 @@ levels_dir_path = "levels/"
 
 [amqp]
 host = "0.0.0.0"
-port = "5672"
+port = "15000"
 vhost = "cultus"
 username = "mac"
 password = "pass"
+prefetch_count = 24
 chromosome_queue_name = "chromosome"
 chromosome_with_fitness_queue_name = "chromosome_with_fitness"

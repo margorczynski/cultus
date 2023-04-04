@@ -4,13 +4,13 @@ use std::str::from_utf8;
 use std::sync::Arc;
 
 use futures::stream::StreamExt;
-use lapin::Channel;
 use lapin::{
     message::DeliveryResult,
     options::{BasicAckOptions, BasicConsumeOptions, BasicPublishOptions, QueueDeclareOptions},
     types::FieldTable,
     BasicProperties, Connection, ConnectionProperties,
 };
+use lapin::options::BasicQosOptions;
 use log::{error, info, trace};
 
 use crate::common::*;
@@ -24,14 +24,21 @@ use crate::smart_network::smart_network::SmartNetwork;
 use crate::smart_network_game_adapter::play_game_with_network;
 
 pub async fn fitness_calc_node_loop(
-    channel: Arc<Channel>,
+    connection: &Connection,
     smart_network_config: Arc<SmartNetworkConfig>,
     game_config: Arc<GameConfig>,
     amqp_config: Arc<AmqpConfig>,
 ) {
     info!("Starting fitness calculation processing...");
 
-    let consumer = channel
+    let publish_channel = Arc::new(connection.create_channel().await.unwrap());
+    let consume_channel = connection.create_channel().await.unwrap();
+
+    consume_channel.basic_qos(amqp_config.prefetch_count, BasicQosOptions {
+        global: true,
+    }).await.unwrap();
+
+    let consumer = consume_channel
         .basic_consume(
             &amqp_config.chromosome_queue_name,
             "fitness",
@@ -70,7 +77,7 @@ pub async fn fitness_calc_node_loop(
     info!("Max average: {}", max_average);
 
     consumer.set_delegate(move |delivery: DeliveryResult| {
-        let channel_clone = channel.clone();
+        let publish_channel_clone = publish_channel.clone();
         let smart_network_config_clone = smart_network_config.clone();
         let game_config_clone = game_config.clone();
         let amqp_config_clone = amqp_config.clone();
@@ -114,7 +121,7 @@ pub async fn fitness_calc_node_loop(
             );
             let serialized = serde_json::to_string(&chromosome_with_fitness).unwrap();
 
-            channel_clone
+            publish_channel_clone
                 .basic_publish(
                     "",
                     &amqp_config_clone.chromosome_with_fitness_queue_name,

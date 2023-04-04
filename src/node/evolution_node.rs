@@ -29,7 +29,7 @@ use crate::smart_network::smart_network::SmartNetwork;
 
 
 pub async fn evolution_node_loop(
-    channel: &Channel,
+    connection: &Connection,
     smart_network_config: &SmartNetworkConfig,
     evolution_config: &EvolutionConfig,
     amqp_config: &AmqpConfig,
@@ -38,9 +38,12 @@ pub async fn evolution_node_loop(
 
     let mut start = Instant::now();
 
+    let publish_channel = connection.create_channel().await.unwrap();
+    let consume_channel = connection.create_channel().await.unwrap();
+
     let mut deliveries_buffer: Vec<Delivery> = Vec::new();
 
-    let mut consumer = channel
+    let mut consumer = consume_channel
         .basic_consume(
             &amqp_config.chromosome_with_fitness_queue_name,
             "evolution",
@@ -93,12 +96,12 @@ pub async fn evolution_node_loop(
 
                 fitness_average_points.push((generation_count as f32, fitness_avg as f32));
 
-                let red_color = rgb::RGB8::new(0xFF, 0x00, 0x00);
+/*                let red_color = rgb::RGB8::new(0xFF, 0x00, 0x00);
 
                 term.move_cursor_to(0, 0).unwrap();
                 Chart::new_with_y_range(200, 100, 0., (fitness_average_points.len() + 1 as usize) as f32, 0.0, fitness_max as f32)
                     .linecolorplot(&Shape::Lines(fitness_average_points.as_slice()), red_color)
-                    .nice();
+                    .nice();*/
 
                 info!(
                     "GEN={} ::: fitness_max={}, fitness_average={}",
@@ -131,7 +134,7 @@ pub async fn evolution_node_loop(
                 for chromosome in evolved {
                     let serialized = serde_json::to_string(&chromosome).unwrap();
 
-                    channel
+                    publish_channel
                         .basic_publish(
                             "",
                             &amqp_config.chromosome_queue_name,
@@ -167,11 +170,13 @@ pub async fn evolution_node_loop(
 }
 
 pub async fn evolution_publish_initial_population(
-    channel: &Channel,
+    connection: &Connection,
     smart_network_config: &SmartNetworkConfig,
     evolution_config: &EvolutionConfig,
     amqp_config: &AmqpConfig,
 ) {
+    let channel = connection.create_channel().await.unwrap();
+
     let smart_network_bitstring_len = SmartNetwork::get_required_bits_for_bitstring(
         smart_network_config.input_count,
         smart_network_config.output_count,
