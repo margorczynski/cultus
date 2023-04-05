@@ -14,6 +14,9 @@ impl Connection {
         nand_count: usize,
         index_bits_count: usize,
     ) -> Option<Connection> {
+
+        //TODO: Try to load the whole thing into memory and directly map it onto a struct?
+
         if s.chars().count() < 3 {
             return None;
         }
@@ -22,11 +25,12 @@ impl Connection {
         let input_type_binary = &s[0..1];
         let input_type_decimal = u32::from_str_radix(input_type_binary, 2).unwrap();
 
-        //TODO: Input/output type - should 11 be a viable state?
         let input_type = match input_type_decimal {
             0 => InputConnectionType::Input,
             1 => InputConnectionType::NAND,
-            _ => return None,
+            _ => {
+                panic!("Non 0/1 value for output type")
+            },
         };
 
         let output_type_binary = &s[1..2];
@@ -35,7 +39,9 @@ impl Connection {
         let output_type = match output_type_decimal {
             0 => OutputConnectionType::Output,
             1 => OutputConnectionType::NAND,
-            _ => return None,
+            _ => {
+                panic!("Non 0/1 value for output type")
+            },
         };
 
         let total_bits = 2 + (2 * index_bits_count);

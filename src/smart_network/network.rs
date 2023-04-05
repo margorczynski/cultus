@@ -60,6 +60,7 @@ impl Network {
         let mut over_saturated_connection_count = 0;
         let mut connections: HashSet<Connection> = HashSet::new();
         let mut input_counts: HashMap<(OutputConnectionType, usize), usize> = HashMap::new();
+        let mut output_counts: HashMap<(InputConnectionType, usize), usize> = HashMap::new();
         while ind < connections_binary.len() {
             let connection_with_len = Connection::from_bitstring(
                 &connections_binary[ind..],
@@ -74,6 +75,7 @@ impl Network {
             );
             match connection_with_len {
                 Some(connection) => {
+                    let input = connection.input.clone();
                     let output = connection.output.clone();
                     let max_inputs_cnt = match output.0 {
                         OutputConnectionType::Output => 1,
@@ -95,6 +97,15 @@ impl Network {
                             }
                         }
                     }
+                    match output_counts.get(&input) {
+                        None => {
+                            output_counts.insert(input, 1);
+                        }
+                        Some(&count) => {
+                            let new_output_count = count + 1;
+                            output_counts.insert(input, new_output_count);
+                        }
+                    }
                 }
                 None => {
                     none_connection_count = none_connection_count + 1;
@@ -103,6 +114,27 @@ impl Network {
             ind = ind + connection_bits_count;
         }
 
+        //TODO: Remove gates where input_cnt != 2 and output_cnt != 1
+        let outputs_with_wrong_input_amount: HashSet<(OutputConnectionType, usize)> = input_counts.iter().filter(|(&(conn_type, _), &count)| {
+            match conn_type {
+                OutputConnectionType::Output => count != 1,
+                OutputConnectionType::NAND => count != 2,
+            }
+        }).map(|(input, _)| input).cloned().collect();
+
+        let inputs_with_not_enough_outputs: HashSet<(InputConnectionType, usize)> = output_counts.iter().filter(|(&(_, _), &count)| {
+            count < 1
+        }).map(|(output, _)| output).cloned().collect();
+
+        let connections_to_remove: HashSet<Connection> =
+            connections
+                .iter()
+                .filter(|&conn| outputs_with_wrong_input_amount.contains(&conn.output) || inputs_with_not_enough_outputs.contains(&conn.input))
+                .cloned()
+                .collect();
+
+        connections = connections.difference(&connections_to_remove).cloned().collect();
+
         debug!(
             "Connections which couldn't be built from binary count: {}",
             none_connection_count
@@ -110,6 +142,14 @@ impl Network {
         debug!(
             "Connections discarded because of input saturation limit: {}",
             over_saturated_connection_count
+        );
+        debug!(
+            "Outputs with wrong input amount: {}",
+            outputs_with_wrong_input_amount.len()
+        );
+        debug!(
+            "Inputs with not enough outputs: {}",
+            inputs_with_not_enough_outputs.len()
         );
 
         Some(Network {

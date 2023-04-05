@@ -56,10 +56,18 @@ async fn main() {
 
     let channel = connection.create_channel().await.unwrap();
 
+    let queue_declare_options = QueueDeclareOptions {
+        passive: false,
+        durable: true,
+        exclusive: false,
+        auto_delete: false,
+        nowait: false,
+    };
+
     let chromosomes_queue = channel
         .queue_declare(
             &amqp_config.chromosome_queue_name,
-            QueueDeclareOptions::default(),
+            queue_declare_options,
             FieldTable::default(),
         )
         .await
@@ -68,7 +76,7 @@ async fn main() {
     let chromosomes_with_fitness_queue = channel
         .queue_declare(
             &amqp_config.chromosome_with_fitness_queue_name,
-            QueueDeclareOptions::default(),
+            queue_declare_options,
             FieldTable::default(),
         )
         .await

@@ -152,16 +152,21 @@ fn crossover(
 
     let mutated_genes_count_1 = (rng.gen_range(0..chromosome_len) as f32 * mutation_rate).ceil() as usize;
     let mutated_genes_count_2 = (rng.gen_range(0..chromosome_len) as f32 * mutation_rate).ceil() as usize;
-    let uniform_1 = Uniform::new(0, mutated_genes_count_1);
-    let uniform_2 = Uniform::new(0, mutated_genes_count_2);
 
-    for _ in 0..mutated_genes_count_1 {
-        let fst_random_idx = rng.sample(uniform_1);
-        fst_child_genes[fst_random_idx] = !fst_child_genes[fst_random_idx];
+    if mutated_genes_count_1 > 0 {
+        let uniform_1 = Uniform::new(0, mutated_genes_count_1);
+        for _ in 0..mutated_genes_count_1 {
+            let fst_random_idx = rng.sample(uniform_1);
+            fst_child_genes[fst_random_idx] = !fst_child_genes[fst_random_idx];
+        }
     }
-    for _ in 0..mutated_genes_count_2 {
-        let snd_random_idx = rng.sample(uniform_2);
-        snd_child_genes[snd_random_idx] = !snd_child_genes[snd_random_idx];
+
+    if mutated_genes_count_2 > 0 {
+        let uniform_2 = Uniform::new(0, mutated_genes_count_2);
+        for _ in 0..mutated_genes_count_2 {
+            let snd_random_idx = rng.sample(uniform_2);
+            snd_child_genes[snd_random_idx] = !snd_child_genes[snd_random_idx];
+        }
     }
 
     (
@@ -261,7 +266,7 @@ mod evolution_tests {
         let results_set: HashSet<Chromosome> = HashSet::from_iter(vec![result.0, result.1]);
 
         assert!(results_set.contains(&Chromosome::from_genes(vec![true, true, true, true])));
-        assert!(results_set.contains(&Chromosome::from_genes(vec![false, false, false, true])));
+        assert!(results_set.contains(&Chromosome::from_genes(vec![true, true, true, true])));
     }
 
     #[test]
