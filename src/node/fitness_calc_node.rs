@@ -150,7 +150,7 @@ fn play_levels(
         smart_network_config.mem_addr_bits,
         smart_network_config.mem_rw_bits,
     );
-    info!("construct_smart_network_elapsed={:?}", smart_network_start.elapsed());
+    trace!("construct_smart_network_elapsed={:?}", smart_network_start.elapsed());
     let playing_start = Instant::now();
     let res = level_idxs_to_times
         .iter()
@@ -170,6 +170,6 @@ fn play_levels(
         })
         .flatten()
         .collect::<Vec<f64>>();
-    info!("play_all_games_elapsed={:?}", playing_start.elapsed());
+    trace!("play_all_games_elapsed={:?}", playing_start.elapsed());
     res
 }

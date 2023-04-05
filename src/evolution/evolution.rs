@@ -1,10 +1,12 @@
 use std::collections::HashSet;
+use std::fmt::Display;
 
-use log::debug;
+use log::{debug, info};
 use rand::prelude::*;
 use rand::{Rng, SeedableRng};
 use rayon::prelude::*;
 use std::time::{Duration, Instant};
+use rand::distributions::Uniform;
 
 use crate::evolution::chromosome::Chromosome;
 use crate::evolution::chromosome_with_fitness::ChromosomeWithFitness;
@@ -65,19 +67,14 @@ pub fn evolve<T: PartialEq + PartialOrd + Clone + Eq + Send>(
 
     chromosomes_with_fitness_ordered.sort_unstable();
 
-    let start_1 = Instant::now();
-
-    let elite: HashSet<Chromosome> = chromosomes_with_fitness_ordered
+    let elite = chromosomes_with_fitness_ordered
         .par_iter()
         .rev()
         .take(elite_amount)
         .cloned()
-        .map(|cwf| cwf.chromosome)
-        .collect();
+        .map(|cwf| cwf.chromosome);
 
-    new_generation.extend(elite);
-
-    let start_2 = Instant::now();
+    new_generation.par_extend(elite);
 
     let offspring = (0..((chromosomes_with_fitness.len() - new_generation.len()) / 2))
         .into_par_iter()
@@ -116,23 +113,14 @@ fn select<T: PartialEq + PartialOrd + Clone + Eq + Send>(
 ) -> (Chromosome, Chromosome) {
     match *selection_strategy {
         SelectionStrategy::Tournament(tournament_size) => {
+            let mut rng = thread_rng();
             //TODO: If chromosomes.len = 0 OR tournament_size > chromosomes.len -> panic
-            let get_winner = |chromosomes_with_fitness: &Vec<ChromosomeWithFitness<T>>| {
-                chromosomes_with_fitness
-                    .iter()
-                    .take(tournament_size)
-                    .max()
-                    .unwrap_or(chromosomes_with_fitness.first().unwrap())
-                    .clone()
+            let mut get_winner = |cwf: &HashSet<ChromosomeWithFitness<T>>| {
+                cwf.iter().choose_multiple(&mut rng, tournament_size).into_iter().max().unwrap().clone()
             };
 
-            let mut chromosomes_vec = Vec::from_iter(chromosomes_with_fitness.clone());
-
-            chromosomes_vec.shuffle(&mut thread_rng());
-            let first = get_winner(&chromosomes_vec);
-            chromosomes_vec.shuffle(&mut thread_rng());
-            chromosomes_vec.retain(|ch| *ch != first);
-            let second = get_winner(&chromosomes_vec);
+            let first = get_winner(&chromosomes_with_fitness);
+            let second= get_winner(&chromosomes_with_fitness);
 
             (first.chromosome, second.chromosome)
         }
@@ -146,7 +134,9 @@ fn crossover(
 ) -> (Chromosome, Chromosome) {
     let mut rng = thread_rng();
 
-    let crossover_point = rng.gen_range(1..(parents.0.genes.len() - 1));
+    let chromosome_len = parents.0.genes.len();
+
+    let crossover_point = rng.gen_range(1..(chromosome_len - 1));
 
     let (fst_left, fst_right) = parents.0.genes.split_at(crossover_point);
     let (snd_left, snd_right) = parents.1.genes.split_at(crossover_point);
@@ -160,18 +150,18 @@ fn crossover(
     snd_child_genes.extend(fst_right);
     snd_child_genes.extend(snd_left);
 
-    for idx in 0..fst_child_genes.len() {
-        let rnd: f32 = rng.gen();
-        if rnd < mutation_rate {
-            fst_child_genes[idx] = !fst_child_genes[idx];
-        }
-    }
+    let mutated_genes_count_1 = (rng.gen_range(0..chromosome_len) as f32 * mutation_rate).ceil() as usize;
+    let mutated_genes_count_2 = (rng.gen_range(0..chromosome_len) as f32 * mutation_rate).ceil() as usize;
+    let uniform_1 = Uniform::new(0, mutated_genes_count_1);
+    let uniform_2 = Uniform::new(0, mutated_genes_count_2);
 
-    for idx in 0..snd_child_genes.len() {
-        let rnd: f32 = rng.gen();
-        if rnd < mutation_rate {
-            snd_child_genes[idx] = !snd_child_genes[idx];
-        }
+    for _ in 0..mutated_genes_count_1 {
+        let fst_random_idx = rng.sample(uniform_1);
+        fst_child_genes[fst_random_idx] = !fst_child_genes[fst_random_idx];
+    }
+    for _ in 0..mutated_genes_count_2 {
+        let snd_random_idx = rng.sample(uniform_2);
+        snd_child_genes[snd_random_idx] = !snd_child_genes[snd_random_idx];
     }
 
     (
