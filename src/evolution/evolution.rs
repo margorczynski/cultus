@@ -4,6 +4,7 @@ use std::fmt::Display;
 use log::{debug, info};
 use rand::prelude::*;
 use rand::{Rng, SeedableRng};
+use rand_distr::Binomial;
 use rayon::prelude::*;
 use std::time::{Duration, Instant};
 use rand::distributions::Uniform;
@@ -150,23 +151,27 @@ fn crossover(
     snd_child_genes.extend(fst_right);
     snd_child_genes.extend(snd_left);
 
-    let mutated_genes_count_1 = (rng.gen_range(0..chromosome_len) as f32 * mutation_rate).ceil() as usize;
-    let mutated_genes_count_2 = (rng.gen_range(0..chromosome_len) as f32 * mutation_rate).ceil() as usize;
+    let binomial = Binomial::new(chromosome_len as u64, mutation_rate as f64).unwrap();
+    let uniform = Uniform::new(0, chromosome_len);
 
-    if mutated_genes_count_1 > 0 {
-        let uniform_1 = Uniform::new(0, mutated_genes_count_1);
-        for _ in 0..mutated_genes_count_1 {
-            let fst_random_idx = rng.sample(uniform_1);
-            fst_child_genes[fst_random_idx] = !fst_child_genes[fst_random_idx];
-        }
+    let mutated_genes_count_1 = binomial.sample(&mut rng) as usize;
+    let mutated_genes_count_2 = binomial.sample(&mut rng) as usize;
+
+    let mut fst_mutation_indices: HashSet<usize> = HashSet::new();
+    let mut snd_mutation_indices: HashSet<usize> = HashSet::new();
+
+    while fst_mutation_indices.len() != mutated_genes_count_1 {
+        fst_mutation_indices.insert(uniform.sample(&mut rng));
+    }
+    while snd_mutation_indices.len() != mutated_genes_count_2 {
+        snd_mutation_indices.insert(uniform.sample(&mut rng));
     }
 
-    if mutated_genes_count_2 > 0 {
-        let uniform_2 = Uniform::new(0, mutated_genes_count_2);
-        for _ in 0..mutated_genes_count_2 {
-            let snd_random_idx = rng.sample(uniform_2);
-            snd_child_genes[snd_random_idx] = !snd_child_genes[snd_random_idx];
-        }
+    for mutated_idx in fst_mutation_indices {
+        fst_child_genes[mutated_idx] = !fst_child_genes[mutated_idx];
+    }
+    for mutated_idx in snd_mutation_indices {
+        snd_child_genes[mutated_idx] = !snd_child_genes[mutated_idx];
     }
 
     (
