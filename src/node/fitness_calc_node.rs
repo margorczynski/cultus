@@ -94,7 +94,7 @@ pub async fn fitness_calc_node_loop(
             let utf8_payload = from_utf8(delivery.data.as_slice()).unwrap();
             let chromosome = serde_json::from_str::<Chromosome>(utf8_payload).unwrap();
 
-            let results: HashMap<usize, Vec<usize>> = play_levels(
+            let results: HashMap<usize, Vec<u32>> = play_levels(
                 game_config_clone.level_to_times_to_play.clone(),
                 &chromosome,
                 &smart_network_config_clone,
@@ -103,15 +103,15 @@ pub async fn fitness_calc_node_loop(
             );
 
             //Take the averages from the final 20% of plays for each level
-            let fitness: f32 = results.iter().map(|(_, results)| {
-                let pareto_amount_small = ((results.len() as f32) * 0.2).ceil();
-                let sum = results.iter().rev().take(pareto_amount_small as usize).sum::<usize>() as f32 / pareto_amount_small;
+            let fitness: f64 = results.iter().map(|(_, results)| {
+                let pareto_amount_small = ((results.len() as f64) * 0.2).ceil();
+                let sum = results.iter().rev().take(pareto_amount_small as usize).sum::<u32>() as f64;
                 sum / pareto_amount_small
-            }).sum::<f32>();
+            }).sum::<f64>();
 
             let chromosome_with_fitness = ChromosomeWithFitness::from_chromosome_and_fitness(
                 chromosome.clone(),
-                fitness.floor() as usize,
+                fitness.floor() as u32,
             );
             let serialized = serde_json::to_string(&chromosome_with_fitness).unwrap();
 
@@ -144,7 +144,7 @@ fn play_levels(
     smart_network_config: &SmartNetworkConfig,
     game_config: &GameConfig,
     levels: &Vec<Level>
-) -> HashMap<usize, Vec<usize>> {
+) -> HashMap<usize, Vec<u32>> {
 
     let smart_network_start = Instant::now();
     let mut smart_network = SmartNetwork::from_bitstring(
@@ -162,20 +162,18 @@ fn play_levels(
         .map(|(&level_idx, &times)| {
             let results = (0..times)
                 .map(|idx| {
-                    let result = play_game_with_network(
+                    play_game_with_network(
                         &mut smart_network,
                         levels[level_idx - 1].clone(),
                         game_config.visibility_distance,
                         false
-                    );
-
-                    result
+                    ) as u32
                 })
-                .collect::<Vec<usize>>();
+                .collect::<Vec<u32>>();
 
             (level_idx, results)
         })
-        .collect::<HashMap<usize, Vec<usize>>>();
+        .collect::<HashMap<usize, Vec<u32>>>();
     trace!("play_all_games_elapsed={:?}", playing_start.elapsed());
     res
 }

@@ -55,53 +55,38 @@ pub async fn evolution_node_loop(
 
     let mut generation_count: usize = 0;
 
-/*    let term = console::Term::stdout();
-    term.hide_cursor().unwrap();
-    term.clear_screen().unwrap();*/
-
-    let mut fitness_average_points: Vec<(f32, f32)> = vec![];
-
     while let Some(delivery) = consumer.next().await {
         trace!("Received message: {:?}", delivery);
         if let Ok(delivery) = delivery {
             deliveries_buffer.push(delivery);
 
-            //TODO: Not initial pop count - change
+            //TODO: Not initial pop count always - change
             if deliveries_buffer.len() == evolution_config.initial_population_count {
                 let evolve_start = Instant::now();
                 info!("------- GENERATION {} -------", generation_count);
-                let population_collected: Vec<ChromosomeWithFitness<usize>> = deliveries_buffer
+                let population_collected: Vec<ChromosomeWithFitness<u32>> = deliveries_buffer
                     .par_iter()
                     .map(|d| {
                         let utf8_payload = from_utf8(d.data.as_slice()).unwrap();
 
-                        serde_json::from_str::<ChromosomeWithFitness<usize>>(utf8_payload).unwrap()
+                        serde_json::from_str::<ChromosomeWithFitness<u32>>(utf8_payload).unwrap()
                     })
                     .collect();
 
                 let fitness_sum = population_collected
                     .par_iter()
                     .map(|c| c.fitness)
-                    .sum::<usize>() as f64;
+                    .sum::<u32>() as f64;
 
                 let top_chromosome = population_collected
                     .par_iter()
                     .max();
 
                 let fitness_max = top_chromosome
-                    .map(|c| c.fitness as i64)
-                    .unwrap_or(-9999);
+                    .map(|c| c.fitness as f64)
+                    .unwrap_or(-9999f64);
 
                 let fitness_avg = fitness_sum / population_collected.len() as f64;
-
-                fitness_average_points.push((generation_count as f32, fitness_avg as f32));
-
-/*                let red_color = rgb::RGB8::new(0xFF, 0x00, 0x00);
-
-                term.move_cursor_to(0, 0).unwrap();
-                Chart::new_with_y_range(200, 100, 0., (fitness_average_points.len() + 1 as usize) as f32, 0.0, fitness_max as f32)
-                    .linecolorplot(&Shape::Lines(fitness_average_points.as_slice()), red_color)
-                    .nice();*/
 
                 info!(
                     "GEN={} ::: fitness_max={}, fitness_average={}, chromosome_count={}",
@@ -125,7 +110,6 @@ pub async fn evolution_node_loop(
                 let evolved = evolve(
                     &HashSet::from_iter(population_collected),
                     Tournament(evolution_config.tournament_size),
-                    evolution_config.mutation_rate,
                     evolution_config.elite_factor,
                 );
 
