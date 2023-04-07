@@ -12,6 +12,7 @@ use lapin::{
 };
 use lapin::options::BasicQosOptions;
 use log::{error, info, trace};
+use tokio::sync::Mutex;
 use tokio::time::Instant;
 
 use crate::common::*;
@@ -70,6 +71,7 @@ pub async fn fitness_calc_node_loop(
     let all_points_amount: usize = levels.iter().map(|lvl| lvl.get_point_amount()).sum();
 
     consumer.set_delegate(move |delivery: DeliveryResult| {
+        //TODO: Is this correct?
         let publish_channel_clone = publish_channel.clone();
         let smart_network_config_clone = smart_network_config.clone();
         let game_config_clone = game_config.clone();
@@ -97,7 +99,7 @@ pub async fn fitness_calc_node_loop(
                 &chromosome,
                 &smart_network_config_clone,
                 &game_config_clone,
-                &levels_clone,
+                &levels_clone
             );
 
             //Take the averages from the final 20% of plays for each level
@@ -141,7 +143,7 @@ fn play_levels(
     chromosome: &Chromosome,
     smart_network_config: &SmartNetworkConfig,
     game_config: &GameConfig,
-    levels: &Vec<Level>,
+    levels: &Vec<Level>
 ) -> HashMap<usize, Vec<usize>> {
 
     let smart_network_start = Instant::now();
@@ -164,6 +166,7 @@ fn play_levels(
                         &mut smart_network,
                         levels[level_idx - 1].clone(),
                         game_config.visibility_distance,
+                        false
                     );
 
                     result

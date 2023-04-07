@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
 use std::fs;
 
 use log::{debug, info};
@@ -153,8 +154,35 @@ impl Level {
             .insert(position.clone(), new_game_object.clone())
     }
 
+    
     fn remove_game_object_at(&mut self, position: &Position) -> bool {
         self.position_to_game_object_map.remove(&position).is_some()
+    }
+}
+
+impl Display for Level {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let row_size = self.get_size_rows();
+        let column_size = self.get_size_column();
+
+        let mut level_str = String::new();
+        for row in 0..row_size {
+            for column in 0..column_size {
+                let position = Position { row, column };
+                let game_object = self.position_to_game_object_map.get(&position);
+                match game_object {
+                    None => {
+                        level_str.push('.');
+                    }
+                    Some(go) => {
+                        level_str.push(go.to_char());
+                    }
+                }
+            }
+            level_str.push('\n');
+        }
+
+        write!(f, "{}", level_str)
     }
 }
 

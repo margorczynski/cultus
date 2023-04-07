@@ -1,3 +1,5 @@
+use std::fmt::{Display, Formatter};
+
 pub enum GameAction {
     MoveUp,
     MoveDown,
@@ -13,5 +15,18 @@ impl GameAction {
             GameAction::MoveRight => (0, 1),
             GameAction::MoveLeft => (0, -1),
         }
+    }
+}
+
+impl Display for GameAction {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let result = match *self {
+            GameAction::MoveUp => "Up",
+            GameAction::MoveDown => "Down",
+            GameAction::MoveRight => "Right",
+            GameAction::MoveLeft => "Left"
+        }.to_owned();
+
+        write!(f, "{}", result)
     }
 }

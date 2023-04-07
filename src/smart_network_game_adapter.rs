@@ -1,4 +1,5 @@
 use std::borrow::Borrow;
+use log::info;
 
 use crate::common::bitstring_to_bit_vector;
 use crate::game::game_action::GameAction;
@@ -14,6 +15,7 @@ pub fn play_game_with_network(
     smart_network: &mut SmartNetwork,
     initial_level: Level,
     visibility_distance: usize,
+    is_game_logged: bool
 ) -> usize {
     let mut current_game_state = GameState::from_initial_level(initial_level);
 
@@ -27,7 +29,12 @@ pub fn play_game_with_network(
                 let smart_network_output_as_action =
                     game_action_from_bit_vector(&smart_network_output).unwrap();
 
-                current_game_state = current_game_state.next_state(smart_network_output_as_action);
+                current_game_state = current_game_state.next_state(&smart_network_output_as_action);
+
+                if is_game_logged {
+                    info!("{}", &smart_network_output_as_action);
+                    info!("{}", &current_game_state);
+                }
             }
             Finished(final_points) => {
                 return *final_points;

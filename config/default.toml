@@ -2,7 +2,7 @@ mode = "fitness"
 
 [evolution]
 initial_population_count = 128
-tournament_size = 4
+tournament_size = 32
 mutation_rate = 0.05
 elite_factor = 0.1
 persist_top_chromosome = false

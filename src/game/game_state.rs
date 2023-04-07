@@ -1,3 +1,4 @@
+use std::fmt::{Display, Formatter};
 use log::debug;
 
 use crate::game::game_action::GameAction;
@@ -17,7 +18,7 @@ impl GameState {
         InProgress(initial_level, 0, 0)
     }
 
-    pub fn next_state(&self, game_action: GameAction) -> GameState {
+    pub fn next_state(&self, game_action: &GameAction) -> GameState {
         match self {
             InProgress(current_level, current_step, current_points) => {
                 debug!(
@@ -61,6 +62,21 @@ impl GameState {
             }
             Finished(final_points) => Finished(*final_points),
         }
+    }
+}
+
+impl Display for GameState {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let result = match self {
+            InProgress(current_level, current_step, current_points) => {
+                format!("{}|{}\n{}", *current_step, *current_points, current_level)
+            }
+            Finished(final_points) => {
+                format!("{}", *final_points)
+            }
+        };
+
+        write!(f, "{}", result)
     }
 }
 

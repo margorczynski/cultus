@@ -36,19 +36,3 @@ impl<T: PartialOrd + Clone + Eq + Send> Ord for ChromosomeWithFitness<T> {
         self.partial_cmp(&other).unwrap_or(Ordering::Equal)
     }
 }
-
-/*let uniform = Uniform::new(0, chromosome_len);
-
-if mutated_genes_count_1 > 0 {
-(0..mutated_genes_count_1).for_each(|_| {
-let idx = uniform.sample(&mut rng);
-fst_child_genes[idx] = !fst_child_genes[idx];
-});
-}
-
-if mutated_genes_count_2 > 0 {
-(0..mutated_genes_count_2).for_each(|_| {
-let idx = uniform.sample(&mut rng);
-snd_child_genes[idx] = !snd_child_genes[idx];
-});
-}*/
