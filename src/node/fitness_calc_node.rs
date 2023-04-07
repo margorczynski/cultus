@@ -92,7 +92,7 @@ pub async fn fitness_calc_node_loop(
             let utf8_payload = from_utf8(delivery.data.as_slice()).unwrap();
             let chromosome = serde_json::from_str::<Chromosome>(utf8_payload).unwrap();
 
-            let results: Vec<f64> = play_levels(
+            let results: HashMap<usize, Vec<usize>> = play_levels(
                 game_config_clone.level_to_times_to_play.clone(),
                 &chromosome,
                 &smart_network_config_clone,
@@ -100,9 +100,12 @@ pub async fn fitness_calc_node_loop(
                 &levels_clone,
             );
 
-            let weighted_results_sum: f64 = results.iter().sum();
-            let results_len = results.len();
-            let fitness = weighted_results_sum / results_len as f64;
+            //Take the averages from the final 20% of plays for each level
+            let fitness: f32 = results.iter().map(|(_, results)| {
+                let pareto_amount_small = ((results.len() as f32) * 0.2).ceil();
+                let sum = results.iter().rev().take(pareto_amount_small as usize).sum::<usize>() as f32 / pareto_amount_small;
+                sum / pareto_amount_small
+            }).sum::<f32>();
 
             let chromosome_with_fitness = ChromosomeWithFitness::from_chromosome_and_fitness(
                 chromosome.clone(),
@@ -139,7 +142,7 @@ fn play_levels(
     smart_network_config: &SmartNetworkConfig,
     game_config: &GameConfig,
     levels: &Vec<Level>,
-) -> Vec<f64> {
+) -> HashMap<usize, Vec<usize>> {
 
     let smart_network_start = Instant::now();
     let mut smart_network = SmartNetwork::from_bitstring(
@@ -155,21 +158,21 @@ fn play_levels(
     let res = level_idxs_to_times
         .iter()
         .map(|(&level_idx, &times)| {
-            (0..times)
+            let results = (0..times)
                 .map(|idx| {
-                    let multiplier = (idx + 1) as f64 / times as f64;
                     let result = play_game_with_network(
                         &mut smart_network,
                         levels[level_idx - 1].clone(),
                         game_config.visibility_distance,
                     );
 
-                    result as f64 * multiplier
+                    result
                 })
-                .collect::<Vec<f64>>()
+                .collect::<Vec<usize>>();
+
+            (level_idx, results)
         })
-        .flatten()
-        .collect::<Vec<f64>>();
+        .collect::<HashMap<usize, Vec<usize>>>();
     trace!("play_all_games_elapsed={:?}", playing_start.elapsed());
     res
 }
