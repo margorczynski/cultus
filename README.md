@@ -12,6 +12,8 @@ Here the fitness is calculated against a simple platform game where the goal is 
 
 The goal of the GA is to find a network which paired up with memory will be able to learn the game after the playthroughs, optimally on a diverse set of levels or even games.
 
+A more detailed description can be found on my blog - https://resethard.io/cultus-framework-to-find-intelligent-logical-circuits/
+
 ## Distributed Computation
 
 One of the key features of Cultus is the ability to easily distribute the GA search among different computers within a computer cluster. This is done using a messaging queue - here RabbitMQ was chosen.
