@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use log::{debug, info, trace};
+use log::{debug, trace};
 use tokio::time::Instant;
 
 use super::network::*;

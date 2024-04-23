@@ -2,12 +2,12 @@ use std::cmp::max;
 use std::collections::HashSet;
 use std::fmt::Display;
 
-use log::{debug, info};
+use log::{debug};
 use rand::prelude::*;
 use rand::{Rng, SeedableRng};
 use rand_distr::Binomial;
 use rayon::prelude::*;
-use std::time::{Duration, Instant};
+
 use rand::distributions::Uniform;
 
 use crate::evolution::chromosome::Chromosome;

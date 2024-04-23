@@ -1,27 +1,26 @@
-use std::borrow::Borrow;
+
 use std::collections::HashSet;
 use std::str::from_utf8;
-use std::time::{Duration, Instant};
+use std::time::{Instant};
 use std::fs::File;
 use std::io::Write;
 
 use futures::stream::StreamExt;
 use lapin::message::Delivery;
-use lapin::Channel;
+
 use lapin::{
-    message::DeliveryResult,
-    options::{BasicAckOptions, BasicConsumeOptions, BasicPublishOptions, QueueDeclareOptions},
+    options::{BasicAckOptions, BasicConsumeOptions, BasicPublishOptions},
     types::FieldTable,
-    BasicProperties, Connection, ConnectionProperties,
+    BasicProperties, Connection,
 };
-use log::{debug, error, info, trace};
+use log::{error, info, trace};
 use rayon::prelude::*;
-use textplots::{Chart, ColorPlot, Shape};
+
 
 use crate::config::amqp_config::AmqpConfig;
 use crate::config::evolution_config::EvolutionConfig;
 use crate::config::smart_network_config::SmartNetworkConfig;
-use crate::evolution::chromosome_with_fitness;
+
 use crate::evolution::chromosome_with_fitness::ChromosomeWithFitness;
 use crate::evolution::evolution::SelectionStrategy::Tournament;
 use crate::evolution::evolution::*;
@@ -30,7 +29,7 @@ use crate::smart_network::smart_network::SmartNetwork;
 
 pub async fn evolution_node_loop(
     connection: &Connection,
-    smart_network_config: &SmartNetworkConfig,
+    _smart_network_config: &SmartNetworkConfig,
     evolution_config: &EvolutionConfig,
     amqp_config: &AmqpConfig,
 ) {

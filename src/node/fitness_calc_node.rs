@@ -1,4 +1,4 @@
-use std::borrow::BorrowMut;
+
 use std::collections::HashMap;
 use std::str::from_utf8;
 use std::sync::Arc;
@@ -6,13 +6,13 @@ use std::sync::Arc;
 use futures::stream::StreamExt;
 use lapin::{
     message::DeliveryResult,
-    options::{BasicAckOptions, BasicConsumeOptions, BasicPublishOptions, QueueDeclareOptions},
+    options::{BasicAckOptions, BasicConsumeOptions, BasicPublishOptions},
     types::FieldTable,
-    BasicProperties, Connection, ConnectionProperties,
+    BasicProperties, Connection,
 };
 use lapin::options::BasicQosOptions;
 use log::{error, info, trace};
-use tokio::sync::Mutex;
+
 use tokio::time::Instant;
 
 use crate::common::*;
@@ -64,11 +64,11 @@ pub async fn fitness_calc_node_loop(
         .map(|path| Level::from_lvl_file(&path, game_config.max_steps))
         .collect();
 
-    levels.iter().enumerate().for_each(|(idx, lvl)| {
+    levels.iter().enumerate().for_each(|(_idx, lvl)| {
         info!("size_rows={}, size_columns={}, player_pos={:?}, total_points={}", lvl.get_size_rows(), lvl.get_size_column(), lvl.get_player_position() ,lvl.get_point_amount())
     });
 
-    let all_points_amount: usize = levels.iter().map(|lvl| lvl.get_point_amount()).sum();
+    let _all_points_amount: usize = levels.iter().map(|lvl| lvl.get_point_amount()).sum();
 
     consumer.set_delegate(move |delivery: DeliveryResult| {
         //TODO: Is this correct?
@@ -161,7 +161,7 @@ fn play_levels(
         .iter()
         .map(|(&level_idx, &times)| {
             let results = (0..times)
-                .map(|idx| {
+                .map(|_idx| {
                     play_game_with_network(
                         &mut smart_network,
                         levels[level_idx - 1].clone(),

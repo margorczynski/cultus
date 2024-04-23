@@ -1,23 +1,21 @@
 extern crate core;
 
-use std::borrow::Borrow;
-use std::collections::HashSet;
+
+
 use std::sync::Arc;
-use std::time::Instant;
+
 
 use lapin::{
-    message::DeliveryResult,
-    options::{BasicAckOptions, BasicConsumeOptions, BasicPublishOptions, QueueDeclareOptions},
-    types::FieldTable,
-    BasicProperties, Connection, ConnectionProperties,
+    options::{QueueDeclareOptions},
+    types::FieldTable, Connection, ConnectionProperties,
 };
-use lapin::auth::Credentials;
-use lapin::options::BasicQosOptions;
+
+
 use log::info;
-use rayon::prelude::*;
+
 
 use common::setup;
-use game::level::Level;
+
 
 use crate::config::cultus_config::CultusConfig;
 use crate::node::evolution_node::{evolution_node_loop, evolution_publish_initial_population};
