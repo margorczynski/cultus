@@ -156,7 +156,7 @@ mod smart_network_game_adapter_tests {
             SmartNetwork::from_bitstring(&network_str, input_count, output_count, 4, 16, 64);
         let level = Level::from_string(&test_str, 5);
 
-        let result = play_game_with_network(&mut smart_network, level, 2);
+        let result = play_game_with_network(&mut smart_network, level, 2, false);
 
         assert_eq!(result, 3);
     }

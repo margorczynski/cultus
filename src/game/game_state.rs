@@ -102,7 +102,7 @@ mod game_state_tests {
         let mut exhausted_current_game_state = GameState::from_initial_level(test_level.clone());
         for _ in 0..(max_steps + 1) {
             exhausted_current_game_state =
-                exhausted_current_game_state.next_state(GameAction::MoveUp)
+                exhausted_current_game_state.next_state(&GameAction::MoveUp)
         }
 
         assert_eq!(exhausted_current_game_state, GameState::Finished(0));
@@ -118,19 +118,19 @@ mod game_state_tests {
 
         //4 * left, right, down, down, left, right, up, right, right, right
         let won_current_game_state = GameState::from_initial_level(test_level.clone())
-            .next_state(GameAction::MoveLeft)
-            .next_state(GameAction::MoveLeft)
-            .next_state(GameAction::MoveLeft)
-            .next_state(GameAction::MoveLeft)
-            .next_state(GameAction::MoveRight)
-            .next_state(GameAction::MoveDown)
-            .next_state(GameAction::MoveDown)
-            .next_state(GameAction::MoveLeft)
-            .next_state(GameAction::MoveRight)
-            .next_state(GameAction::MoveUp)
-            .next_state(GameAction::MoveRight)
-            .next_state(GameAction::MoveRight)
-            .next_state(GameAction::MoveRight);
+            .next_state(&GameAction::MoveLeft)
+            .next_state(&GameAction::MoveLeft)
+            .next_state(&GameAction::MoveLeft)
+            .next_state(&GameAction::MoveLeft)
+            .next_state(&GameAction::MoveRight)
+            .next_state(&GameAction::MoveDown)
+            .next_state(&GameAction::MoveDown)
+            .next_state(&GameAction::MoveLeft)
+            .next_state(&GameAction::MoveRight)
+            .next_state(&GameAction::MoveUp)
+            .next_state(&GameAction::MoveRight)
+            .next_state(&GameAction::MoveRight)
+            .next_state(&GameAction::MoveRight);
 
         assert_eq!(won_current_game_state, GameState::Finished(19));
     }

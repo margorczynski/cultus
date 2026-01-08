@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
+use std::time::Instant;
 
 use log::{debug, trace};
-use tokio::time::Instant;
 
 use super::connection::*;
 

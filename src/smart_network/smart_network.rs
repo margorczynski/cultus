@@ -1,19 +1,51 @@
-use std::collections::HashMap;
+use std::time::Instant;
 
 use log::{debug, trace};
-use tokio::time::Instant;
 
 use super::network::*;
 
+/// Bounded memory storage for the smart network.
+/// Uses a fixed-size array indexed by address bits converted to usize.
+pub struct SmartNetworkMemory {
+    data: Vec<Vec<bool>>,
+    data_width: usize,
+}
+
+impl SmartNetworkMemory {
+    pub fn new(addr_bits: usize, data_width: usize) -> Self {
+        let size = 1 << addr_bits; // 2^addr_bits entries
+        SmartNetworkMemory {
+            data: vec![vec![false; data_width]; size],
+            data_width,
+        }
+    }
+
+    fn addr_to_index(addr: &[bool]) -> usize {
+        addr.iter()
+            .enumerate()
+            .map(|(i, &b)| if b { 1 << i } else { 0 })
+            .sum()
+    }
+
+    pub fn read(&self, addr: &[bool]) -> &[bool] {
+        let idx = Self::addr_to_index(addr);
+        &self.data[idx]
+    }
+
+    pub fn write(&mut self, addr: &[bool], value: &[bool]) {
+        let idx = Self::addr_to_index(addr);
+        self.data[idx].copy_from_slice(value);
+    }
+}
+
 #[allow(dead_code)]
 pub struct SmartNetwork {
-    //TODO: The network is actually not used after getting the output function
     network: Network,
     memory_addr_input_count: usize,
     memory_rw_input_count: usize,
-    get_network_output_fn: Box<dyn Fn(&Vec<bool>) -> Vec<bool>>,
-    memory: HashMap<Vec<bool>, Vec<bool>>,
-    current_memory_output: Option<Vec<bool>>,
+    get_network_output_fn: Box<dyn Fn(&Vec<bool>) -> Vec<bool> + Send + Sync>,
+    memory: SmartNetworkMemory,
+    current_memory_output: Vec<bool>,
 }
 
 impl SmartNetwork {
@@ -33,26 +65,35 @@ impl SmartNetwork {
             Network::from_bitstring(s, total_input_count, total_output_count, nand_count_bits)
                 .unwrap()
                 .clone();
-        trace!("from_bitstring_elapsed={:?}", from_bitstring_start.elapsed());
+        trace!(
+            "from_bitstring_elapsed={:?}",
+            from_bitstring_start.elapsed()
+        );
 
         let clean_connections_start = Instant::now();
         network.clean_connections();
-        trace!("clean_connections_elapsed={:?}", clean_connections_start.elapsed());
+        trace!(
+            "clean_connections_elapsed={:?}",
+            clean_connections_start.elapsed()
+        );
 
         let get_outputs_computation_fn_start = Instant::now();
         let output_fn = Box::new(Network::get_outputs_computation_fn(
             total_output_count,
             &network.connections,
         ));
-        trace!("get_outputs_computation_fn_elapsed={:?}", get_outputs_computation_fn_start.elapsed());
+        trace!(
+            "get_outputs_computation_fn_elapsed={:?}",
+            get_outputs_computation_fn_start.elapsed()
+        );
 
         SmartNetwork {
             network,
             memory_addr_input_count: memory_addr_bits,
             memory_rw_input_count: memory_rw_bits,
             get_network_output_fn: output_fn,
-            memory: HashMap::new(),
-            current_memory_output: None,
+            memory: SmartNetworkMemory::new(memory_addr_bits, memory_rw_bits),
+            current_memory_output: vec![false; memory_rw_bits],
         }
     }
 
@@ -96,23 +137,18 @@ impl SmartNetwork {
 
     pub fn compute_output(&mut self, input: &[bool]) -> Vec<bool> {
         let network_output_fn = self.get_network_output_fn.as_ref();
-        let mut full_input: Vec<bool> = Vec::new();
+        let mut full_input: Vec<bool> = Vec::with_capacity(input.len() + self.memory_rw_input_count);
 
         full_input.extend(input);
-        full_input.extend(
-            &self
-                .current_memory_output
-                .clone()
-                .unwrap_or(vec![false; self.memory_rw_input_count]),
-        );
+        full_input.extend(&self.current_memory_output);
 
         let network_output: Vec<bool> = network_output_fn(&full_input);
 
-        //The first index of the first output that controls the memory
+        // The first index of the first output that controls the memory
         let outputs_count_without_memory =
             network_output.len() - (2 * self.memory_addr_input_count) - self.memory_rw_input_count;
         let mem_inputs_start_idx = outputs_count_without_memory;
-        //The indexes of the outputs for
+        // The indexes of the outputs for memory operations
         let mem_output_addr_idx = mem_inputs_start_idx;
         let mem_input_addr_idx = mem_output_addr_idx + self.memory_addr_input_count;
         let mem_input_idx = mem_input_addr_idx + self.memory_addr_input_count;
@@ -124,16 +160,12 @@ impl SmartNetwork {
         let mem_input =
             &network_output[mem_input_idx..(mem_input_idx + self.memory_rw_input_count)];
 
-        //Whole output = Output | Output mem addr | Input mem addr | Mem input
-        self.current_memory_output = self.memory.get(mem_output_addr).cloned();
-        self.memory
-            .insert(Vec::from(mem_input_addr), Vec::from(mem_input));
+        // Read from memory at output address
+        self.current_memory_output = self.memory.read(mem_output_addr).to_vec();
+        // Write to memory at input address
+        self.memory.write(mem_input_addr, mem_input);
 
-        debug!("Memory after compute: {:?}", self.memory);
-        debug!(
-            "Memory output for next compute: {:?}",
-            self.current_memory_output
-        );
+        debug!("Memory output for next compute: {:?}", self.current_memory_output);
 
         network_output
             .iter()
@@ -146,13 +178,13 @@ impl SmartNetwork {
 #[cfg(test)]
 mod smart_network_tests {
     use super::*;
-    use std::collections::HashSet;
     use crate::smart_network::connection::*;
+    use std::collections::HashSet;
 
     #[test]
     fn from_bitstring_test() {
-        let input_count = 12; //4 bits
-        let output_count = 12; //4 bits
+        let input_count = 12;
+        let output_count = 12;
 
         let expected_network_str = [
             "1100",             //12 NANDs
@@ -257,8 +289,8 @@ mod smart_network_tests {
             memory_addr_input_count: 1,
             memory_rw_input_count: 2,
             get_network_output_fn: output_fn,
-            memory: HashMap::new(),
-            current_memory_output: None,
+            memory: SmartNetworkMemory::new(1, 2),
+            current_memory_output: vec![false; 2],
         };
 
         let input_1 = vec![true, false];
