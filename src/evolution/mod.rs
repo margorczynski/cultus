@@ -1,5 +1,6 @@
 pub mod chromosome;
 pub mod chromosome_with_fitness;
+pub mod compiled_network;
 pub mod curriculum;
 pub mod direct_encoding;
 pub mod evolution;

@@ -37,13 +37,15 @@ impl SmartNetworkMemory {
     }
 }
 
+use crate::evolution::compiled_network::CompiledNetwork;
+
 /// Internal network representation - either legacy or direct.
 enum NetworkRepr {
     Legacy {
         network: Network,
         output_fn: Box<dyn Fn(&Vec<bool>) -> Vec<bool> + Send + Sync>,
     },
-    Direct(DirectNetwork),
+    Compiled(CompiledNetwork),
 }
 
 /// Smart network with memory capabilities.
@@ -71,8 +73,11 @@ impl SmartNetwork {
         memory_register_count: usize,
         memory_register_width: usize,
     ) -> SmartNetwork {
+        // Compile the network for faster execution
+        let compiled = CompiledNetwork::compile(&network);
+        
         SmartNetwork {
-            network_repr: NetworkRepr::Direct(network),
+            network_repr: NetworkRepr::Compiled(compiled),
             memory_register_count,
             memory_register_width,
             memory: SmartNetworkMemory::new(memory_register_count, memory_register_width),
@@ -88,8 +93,11 @@ impl SmartNetwork {
             .map(|mc| (mc.register_count as usize, mc.register_width as usize))
             .unwrap_or((0, 0));
 
+        // Compile the network for faster execution
+        let compiled = CompiledNetwork::compile(&network);
+
         SmartNetwork {
-            network_repr: NetworkRepr::Direct(network),
+            network_repr: NetworkRepr::Compiled(compiled),
             memory_register_count: reg_count,
             memory_register_width: reg_width,
             memory: SmartNetworkMemory::new(reg_count, reg_width),
@@ -251,8 +259,8 @@ impl SmartNetwork {
         // Compute network output based on representation type
         let network_output = match &self.network_repr {
             NetworkRepr::Legacy { output_fn, .. } => output_fn(&full_input),
-            NetworkRepr::Direct(network) => {
-                network.compute_with_memory(&full_input, &self.current_memory_output)
+            NetworkRepr::Compiled(compiled) => {
+                compiled.compute(&full_input, &self.current_memory_output)
             }
         };
 
