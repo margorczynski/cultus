@@ -13,8 +13,8 @@ use_local_search = false
 input_count = 149
 output_count = 2
 nand_count_bits = 10
-mem_addr_bits = 8
-mem_rw_bits = 8
+memory_register_count = 4
+memory_register_width = 4
 connection_count = 5000
 
 [game]

@@ -139,10 +139,10 @@ fn resolve_input(
 /// Memory configuration for SmartNetwork.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MemoryConfig {
-    /// Number of address bits (2^addr_bits memory locations)
-    pub addr_bits: u8,
-    /// Number of data bits per location
-    pub data_bits: u8,
+    /// Number of independent memory registers
+    pub register_count: u8,
+    /// Width of each register in bits
+    pub register_width: u8,
 }
 
 /// Direct network representation - every gate is valid by construction.
@@ -185,7 +185,7 @@ impl DirectNetwork {
         memory_config: Option<MemoryConfig>,
         rng: &mut impl Rng,
     ) -> Self {
-        let memory_bits = memory_config.as_ref().map(|m| m.data_bits).unwrap_or(0);
+        let memory_bits = memory_config.as_ref().map(|m| m.register_count as usize * m.register_width as usize).unwrap_or(0);
         let mut gates = Vec::with_capacity(gate_count);
 
         for i in 0..gate_count {
@@ -203,7 +203,7 @@ impl DirectNetwork {
             // Generate valid inputs for this gate
             let num_inputs = gate_type.required_inputs();
             let inputs: Vec<InputSource> = (0..num_inputs)
-                .map(|_| Self::random_input_source(input_count, i as u16, memory_bits, rng))
+                .map(|_| Self::random_input_source(input_count, i as u16, memory_bits.try_into().unwrap(), rng))
                 .collect();
 
             gates.push(Gate::new(gate_type, inputs));
@@ -211,7 +211,7 @@ impl DirectNetwork {
 
         // Generate output sources
         let outputs: Vec<InputSource> = (0..output_count)
-            .map(|_| Self::random_input_source(input_count, gate_count as u16, memory_bits, rng))
+            .map(|_| Self::random_input_source(input_count, gate_count as u16, memory_bits.try_into().unwrap(), rng))
             .collect();
 
         DirectNetwork {
@@ -276,7 +276,7 @@ impl DirectNetwork {
 
     /// Get total number of valid input sources for a gate at position `gate_idx`.
     pub fn valid_source_count(&self, gate_idx: usize) -> usize {
-        let memory_bits = self.memory_config.as_ref().map(|m| m.data_bits).unwrap_or(0);
+        let memory_bits = self.memory_config.as_ref().map(|m| m.register_count as usize * m.register_width as usize).unwrap_or(0);
         self.input_count as usize + gate_idx + memory_bits as usize
     }
 
@@ -288,7 +288,7 @@ impl DirectNetwork {
             InputSource::MemoryBit(idx) => {
                 self.memory_config
                     .as_ref()
-                    .map(|m| (*idx as usize) < m.data_bits as usize)
+                    .map(|m| (*idx as usize) < (m.register_count as usize * m.register_width as usize))
                     .unwrap_or(false)
             }
             InputSource::Constant(_) => true,
@@ -320,7 +320,7 @@ impl DirectNetwork {
 
     /// Repair any invalid references in the network.
     pub fn repair(&mut self, rng: &mut impl Rng) {
-        let memory_bits = self.memory_config.as_ref().map(|m| m.data_bits).unwrap_or(0);
+        let memory_bits = self.memory_config.as_ref().map(|m| m.register_count as usize * m.register_width as usize).unwrap_or(0);
         let input_count = self.input_count;
         let gate_count = self.gates.len();
 
@@ -332,7 +332,7 @@ impl DirectNetwork {
                 self.gates[gate_idx].inputs.push(Self::random_input_source(
                     input_count,
                     gate_idx as u16,
-                    memory_bits,
+                    memory_bits.try_into().unwrap(),
                     rng,
                 ));
             }
@@ -352,7 +352,7 @@ impl DirectNetwork {
                 self.gates[gate_idx].inputs[i] = Self::random_input_source(
                     input_count,
                     gate_idx as u16,
-                    memory_bits,
+                    memory_bits.try_into().unwrap(),
                     rng,
                 );
             }
@@ -365,7 +365,7 @@ impl DirectNetwork {
                 self.outputs[i] = Self::random_input_source(
                     input_count,
                     gate_count as u16,
-                    memory_bits,
+                    memory_bits.try_into().unwrap(),
                     rng,
                 );
             }
@@ -380,7 +380,7 @@ impl DirectNetwork {
             InputSource::MemoryBit(idx) => {
                 memory_config
                     .as_ref()
-                    .map(|m| (*idx as usize) < m.data_bits as usize)
+                    .map(|m| (*idx as usize) < (m.register_count as usize * m.register_width as usize))
                     .unwrap_or(false)
             }
             InputSource::Constant(_) => true,
@@ -600,8 +600,8 @@ mod tests {
             )],
             outputs: vec![InputSource::GateOutput(0)],
             memory_config: Some(MemoryConfig {
-                addr_bits: 2,
-                data_bits: 4,
+                register_count: 1,
+                register_width: 4,
             }),
         };
 

@@ -160,7 +160,7 @@ impl DirectNetwork {
     /// Add a new gate at a random position.
     pub fn mutate_add_gate(&mut self, rng: &mut impl Rng) {
         let insert_pos = rng.gen_range(0..=self.gates.len());
-        let memory_bits = self.memory_config.as_ref().map(|m| m.data_bits).unwrap_or(0);
+        let memory_bits = self.memory_config.as_ref().map(|m| m.register_width).unwrap_or(0);
 
         // Choose random gate type
         let gate_type = *[
@@ -198,7 +198,7 @@ impl DirectNetwork {
 
     /// Remove a gate and repair broken references.
     fn remove_gate_and_repair(&mut self, remove_pos: usize, rng: &mut impl Rng) {
-        let memory_bits = self.memory_config.as_ref().map(|m| m.data_bits).unwrap_or(0);
+        let memory_bits = self.memory_config.as_ref().map(|m| m.register_width).unwrap_or(0);
         self.gates.remove(remove_pos);
 
         // Repair references in remaining gates
@@ -265,7 +265,7 @@ impl DirectNetwork {
             return;
         }
 
-        let memory_bits = self.memory_config.as_ref().map(|m| m.data_bits).unwrap_or(0);
+        let memory_bits = self.memory_config.as_ref().map(|m| m.register_width).unwrap_or(0);
         let gate_idx = rng.gen_range(0..self.gates.len());
         let gate = &mut self.gates[gate_idx];
 
@@ -361,7 +361,7 @@ impl DirectNetwork {
             return;
         }
 
-        let memory_bits = self.memory_config.as_ref().map(|m| m.data_bits).unwrap_or(0);
+        let memory_bits = self.memory_config.as_ref().map(|m| m.register_width).unwrap_or(0);
         let output_idx = rng.gen_range(0..self.outputs.len());
         self.outputs[output_idx] =
             Self::random_input_source(self.input_count, self.gates.len() as u16, memory_bits, rng);
@@ -402,7 +402,7 @@ fn swap_module(
     rng: &mut impl Rng,
 ) -> DirectNetwork {
     let mut child = recipient.clone();
-    let memory_bits = child.memory_config.as_ref().map(|m| m.data_bits).unwrap_or(0);
+    let memory_bits = child.memory_config.as_ref().map(|m| m.register_width).unwrap_or(0);
 
     // Remove recipient module gates (in reverse order)
     let mut sorted_remove: Vec<_> = recipient_module.gate_indices.iter().copied().collect();

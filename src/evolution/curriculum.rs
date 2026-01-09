@@ -21,10 +21,9 @@ pub struct MemoryStageConfig {
 impl MemoryStageConfig {
     /// Convert to MemoryConfig for DirectNetwork.
     pub fn to_memory_config(&self) -> MemoryConfig {
-        let addr_bits = (self.register_count as f64).log2().ceil() as u8;
         MemoryConfig {
-            addr_bits,
-            data_bits: self.bits_per_register as u8,
+            register_count: self.register_count as u8,
+            register_width: self.bits_per_register as u8,
         }
     }
 }
@@ -297,7 +296,7 @@ mod tests {
         };
         let mem_config = mem_stage.to_memory_config();
 
-        assert_eq!(mem_config.addr_bits, 4); // log2(16) = 4
-        assert_eq!(mem_config.data_bits, 8);
+        assert_eq!(mem_config.register_count, 16);
+        assert_eq!(mem_config.register_width, 8);
     }
 }

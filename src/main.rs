@@ -107,26 +107,27 @@ fn run_direct_evolution(config: &CultusConfig) {
     }
 
     // Configure DirectNetwork evolution
-    let memory_config = if smart_network_config.mem_addr_bits > 0 {
+    let memory_config = if smart_network_config.memory_register_count > 0 {
         Some(MemoryConfig {
-            addr_bits: smart_network_config.mem_addr_bits as u8,
-            data_bits: smart_network_config.mem_rw_bits as u8,
+            register_count: smart_network_config.memory_register_count as u8,
+            register_width: smart_network_config.memory_register_width as u8,
         })
     } else {
         None
     };
 
     // Calculate total output count including memory control signals
-    // Memory outputs: 2 * addr_bits (read addr + write addr) + data_bits (write data)
+    // Memory outputs per register: 1 bit (Write Enable) + width bits (New Data)
     let memory_output_count = if memory_config.is_some() {
-        2 * smart_network_config.mem_addr_bits + smart_network_config.mem_rw_bits
+        smart_network_config.memory_register_count * (1 + smart_network_config.memory_register_width)
     } else {
         0
     };
     let total_output_count = smart_network_config.output_count + memory_output_count;
 
-    // Total input count includes memory feedback
-    let total_input_count = smart_network_config.input_count + smart_network_config.mem_rw_bits;
+    // Total input count includes memory feedback (all registers flattened)
+    let total_input_count = smart_network_config.input_count + 
+        (smart_network_config.memory_register_count * smart_network_config.memory_register_width);
 
     let direct_config = DirectEvolutionConfig {
         gate_count: evolution_config.initial_gate_count.unwrap_or(100),
@@ -385,8 +386,8 @@ fn run_legacy_evolution(config: &CultusConfig) {
         smart_network_config.input_count,
         smart_network_config.output_count,
         smart_network_config.nand_count_bits,
-        smart_network_config.mem_addr_bits,
-        smart_network_config.mem_rw_bits,
+        smart_network_config.memory_register_count,
+        smart_network_config.memory_register_width,
         smart_network_config.connection_count,
     );
 
@@ -506,8 +507,8 @@ fn evaluate_chromosome_multi_objective(
         smart_network_config.input_count,
         smart_network_config.output_count,
         smart_network_config.nand_count_bits,
-        smart_network_config.mem_addr_bits,
-        smart_network_config.mem_rw_bits,
+        smart_network_config.memory_register_count,
+        smart_network_config.memory_register_width,
     );
 
     let mut all_results: Vec<GameResult> = Vec::new();
