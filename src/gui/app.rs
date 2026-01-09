@@ -17,6 +17,8 @@ pub struct EvolutionMetrics {
     pub archive_size: usize,
 }
 
+const MAX_PLOT_POINTS: usize = 2000;
+
 pub struct EvolutionApp {
     rx: Receiver<EvolutionMetrics>,
     metrics_history: VecDeque<EvolutionMetrics>,
@@ -25,6 +27,9 @@ pub struct EvolutionApp {
     plot_fitness_avg: Vec<[f64; 2]>,
     plot_diversity: Vec<[f64; 2]>,
     plot_gates: Vec<[f64; 2]>,
+    
+    // Optimization: dynamic stride for downsampling
+    plot_stride: usize,
 }
 
 impl EvolutionApp {
@@ -36,23 +41,51 @@ impl EvolutionApp {
             plot_fitness_avg: Vec::new(),
             plot_diversity: Vec::new(),
             plot_gates: Vec::new(),
+            plot_stride: 1,
         }
+    }
+
+    fn downsample_vector(vec: &mut Vec<[f64; 2]>) {
+        // Keep every second element
+        let mut write_idx = 0;
+        for read_idx in (0..vec.len()).step_by(2) {
+            vec[write_idx] = vec[read_idx];
+            write_idx += 1;
+        }
+        vec.truncate(write_idx);
     }
 
     fn process_messages(&mut self) {
         // Drain all available messages
         while let Ok(metrics) = self.rx.try_recv() {
-            let gen = metrics.generation as f64;
+            let gen = metrics.generation;
             
-            // Update plots
-            self.plot_fitness_best.push([gen, metrics.best_fitness]);
-            self.plot_fitness_avg.push([gen, metrics.avg_fitness]);
-            self.plot_diversity.push([gen, metrics.diversity]);
-            self.plot_gates.push([gen, metrics.avg_gates]);
-
-            // Keep history limited if needed, but for now we keep all points for the graph
+            // Limit history size to prevent memory bloat (only need latest for sidebar)
+            if self.metrics_history.len() >= 100 {
+                self.metrics_history.pop_front();
+            }
             // Only update history with latest for current status display
-            self.metrics_history.push_back(metrics);
+            self.metrics_history.push_back(metrics.clone());
+            
+            // Plotting update with strided downsampling
+            if gen % self.plot_stride == 0 {
+                let gen_f = gen as f64;
+                self.plot_fitness_best.push([gen_f, metrics.best_fitness]);
+                self.plot_fitness_avg.push([gen_f, metrics.avg_fitness]);
+                self.plot_diversity.push([gen_f, metrics.diversity]);
+                self.plot_gates.push([gen_f, metrics.avg_gates]);
+
+                // Check if we need to downsample
+                if self.plot_fitness_best.len() > MAX_PLOT_POINTS {
+                    self.plot_stride *= 2;
+                    Self::downsample_vector(&mut self.plot_fitness_best);
+                    Self::downsample_vector(&mut self.plot_fitness_avg);
+                    Self::downsample_vector(&mut self.plot_diversity);
+                    Self::downsample_vector(&mut self.plot_gates);
+                    // Force a full garbage collect of the plot memory if possible? 
+                    // Vec::truncate keeps capacity, but it's fine as it won't grow infinitely now.
+                }
+            }
         }
     }
 }
@@ -99,7 +132,8 @@ impl eframe::App for EvolutionApp {
             ui.heading("Metrics");
             
             // Tabs via Grid/Layout or just vertical plots
-            let height = ui.available_height() / 3.0;
+            // Tabs via Grid/Layout or just vertical plots
+            let height = ui.available_height() / 3.5;
 
             ui.label("Fitness (Best & Avg)");
             Plot::new("fitness_plot")
@@ -109,6 +143,8 @@ impl eframe::App for EvolutionApp {
                     plot_ui.line(Line::new(PlotPoints::from(self.plot_fitness_best.clone())).name("Best"));
                     plot_ui.line(Line::new(PlotPoints::from(self.plot_fitness_avg.clone())).name("Avg"));
                 });
+            
+            ui.add_space(8.0);
 
             ui.label("Behavioral Diversity");
             Plot::new("diversity_plot")
@@ -117,6 +153,8 @@ impl eframe::App for EvolutionApp {
                 .show(ui, |plot_ui| {
                     plot_ui.line(Line::new(PlotPoints::from(self.plot_diversity.clone())).name("Diversity"));
                 });
+
+            ui.add_space(8.0);
 
             ui.label("Average Gate Count");
             Plot::new("gates_plot")

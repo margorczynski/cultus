@@ -402,8 +402,10 @@ fn evaluate_direct_network_with_novelty(
         None
     };
 
-    let avg_points = total_points / (levels.len() * plays_per_level) as f64;
-    (avg_points, signature)
+    // Formula: Sum of (Total points for level / plays_per_level)
+    // This gives the sum of average scores per level, matching curriculum thresholds.
+    let objective_score = total_points / plays_per_level as f64;
+    (objective_score, signature)
 }
 
 /// Simple evaluation without novelty (for local search).
@@ -428,7 +430,7 @@ fn evaluate_direct_network_simple(
         }
     }
 
-    total_points / (levels.len() * plays_per_level) as f64
+    total_points / plays_per_level as f64
 }
 
 /// Run evolution using the legacy bit-string encoding (backward compatibility).
