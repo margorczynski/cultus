@@ -61,6 +61,12 @@ impl FitnessMetrics {
             + self.learning * learning_weight
     }
 }
+mod gui;
+
+use gui::app::EvolutionApp;
+use gui::app::EvolutionMetrics;
+use std::thread;
+use crossbeam_channel::Sender;
 
 fn main() {
     setup();
@@ -69,18 +75,48 @@ fn main() {
 
     // Check if we should use the new direct encoding system
     let use_direct_encoding = config.evolution.use_direct_encoding.unwrap_or(true);
+    
+    // Check command line args for --cli to disable GUI
+    let args: Vec<String> = std::env::args().collect();
+    let launch_gui = !args.contains(&"--cli".to_string());
 
-    if use_direct_encoding {
-        info!("Using new DirectNetwork-based evolution");
-        run_direct_evolution(&config);
+    if launch_gui {
+        info!("Launching Cultus GUI...");
+        
+        // Create channel for communication
+        let (tx, rx) = crossbeam_channel::unbounded();
+
+        // Spawn evolution in background thread
+        thread::spawn(move || {
+            if use_direct_encoding {
+                info!("Using new DirectNetwork-based evolution (Background)");
+                run_direct_evolution(&config, Some(tx));
+            } else {
+                info!("Using legacy bit-string encoding (GUI not supported fully)");
+                run_legacy_evolution(&config);
+            }
+        });
+
+        // Run GUI
+        let native_options = eframe::NativeOptions::default();
+        let _ = eframe::run_native(
+            "Cultus Evolution",
+            native_options,
+            Box::new(|cc| Box::new(EvolutionApp::new(cc, rx))),
+        );
     } else {
-        info!("Using legacy bit-string encoding");
-        run_legacy_evolution(&config);
+        if use_direct_encoding {
+            info!("Using new DirectNetwork-based evolution");
+            run_direct_evolution(&config, None);
+        } else {
+            info!("Using legacy bit-string encoding");
+            run_legacy_evolution(&config);
+        }
     }
 }
 
 /// Run evolution using the new DirectNetwork encoding system.
-fn run_direct_evolution(config: &CultusConfig) {
+fn run_direct_evolution(config: &CultusConfig, gui_sender: Option<Sender<EvolutionMetrics>>) {
     let evolution_config = &config.evolution;
     let smart_network_config = &config.smart_network;
     let game_config = &config.game;
@@ -263,6 +299,26 @@ fn run_direct_evolution(config: &CultusConfig) {
             stats.diversity,
             novelty_archive.len()
         );
+
+        // Send metrics to GUI if connected
+        if let Some(sender) = &gui_sender {
+            let metrics = EvolutionMetrics {
+                generation,
+                stage_name: curriculum.current_stage().name.clone(),
+                stage_index: curriculum.current_stage_index() + 1,
+                best_fitness: stats.max_fitness,
+                avg_fitness: stats.avg_fitness,
+                objective_fitness: best_objective,
+                avg_gates: stats.avg_gate_count,
+                diversity: stats.diversity,
+                archive_size: novelty_archive.len(),
+            };
+            if let Err(e) = sender.send(metrics) {
+                // Channel closed, likely GUI closed. Stop evolution.
+                info!("GUI closed, stopping evolution: {}", e);
+                break;
+            }
+        }
 
         // Check for curriculum advancement
         if curriculum.update(best_objective) {
