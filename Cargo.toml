@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 log = "0.4.17"
-simple_logger = "4.1.0"
+simple_logger = "5"
 rand = "0.8.5"
 rand_distr = "0.4.3"
 rayon = "1.7.0"

@@ -2,6 +2,7 @@ use std::borrow::Borrow;
 use log::info;
 
 use crate::common::bitstring_to_bit_vector;
+use crate::evolution::novelty::{GameTrace, BehavioralSignature};
 use crate::game::game_action::GameAction;
 use crate::game::game_action::GameAction::{MoveDown, MoveLeft, MoveRight, MoveUp};
 use crate::game::game_state::GameState;
@@ -17,6 +18,8 @@ pub struct GameResult {
     pub points: usize,
     pub steps_taken: usize,
     pub max_steps: usize,
+    /// Optional game trace for novelty computation
+    pub trace: Option<GameTrace>,
 }
 
 impl GameResult {
@@ -33,6 +36,11 @@ impl GameResult {
     pub fn is_win(&self) -> bool {
         self.steps_taken < self.max_steps && self.points > 0
     }
+
+    /// Get the behavioral signature from this result's trace.
+    pub fn behavioral_signature(&self) -> Option<BehavioralSignature> {
+        self.trace.as_ref().map(BehavioralSignature::from_trace)
+    }
 }
 
 /// Play a game with the given network and return detailed results
@@ -42,13 +50,25 @@ pub fn play_game_with_network(
     visibility_distance: usize,
     is_game_logged: bool,
 ) -> GameResult {
+    play_game_with_network_traced(smart_network, initial_level, visibility_distance, is_game_logged, false)
+}
+
+/// Play a game with the given network and optionally collect a trace for novelty computation.
+pub fn play_game_with_network_traced(
+    smart_network: &mut SmartNetwork,
+    initial_level: Level,
+    visibility_distance: usize,
+    is_game_logged: bool,
+    collect_trace: bool,
+) -> GameResult {
     let max_steps = initial_level.max_steps;
     let mut current_game_state = GameState::from_initial_level(initial_level);
     let mut steps_taken = 0;
+    let mut trace = if collect_trace { Some(GameTrace::new()) } else { None };
 
     loop {
         match current_game_state.borrow() {
-            in_progress @ GameState::InProgress(_, current_step, _) => {
+            in_progress @ GameState::InProgress(current_level, current_step, current_points) => {
                 steps_taken = *current_step;
                 let state_bit_vector =
                     game_state_to_bit_vector(in_progress, visibility_distance).unwrap();
@@ -56,6 +76,17 @@ pub fn play_game_with_network(
                     smart_network.compute_output(state_bit_vector.as_slice());
                 let smart_network_output_as_action =
                     game_action_from_bit_vector(&smart_network_output).unwrap();
+
+                // Record trace step if collecting
+                if let Some(ref mut game_trace) = trace {
+                    let player_pos = current_level.get_player_position();
+                    let action_id = game_action_to_id(&smart_network_output_as_action);
+                    game_trace.record_step(
+                        (player_pos.row as u16, player_pos.column as u16),
+                        action_id,
+                        *current_points,
+                    );
+                }
 
                 current_game_state = current_game_state.next_state(&smart_network_output_as_action);
 
@@ -65,13 +96,31 @@ pub fn play_game_with_network(
                 }
             }
             Finished(final_points) => {
+                // Finalize trace if collecting
+                if let Some(ref mut game_trace) = trace {
+                    // Check if won: collected all rewards (we assume max_points is derived from level)
+                    let won = *final_points > 0 && steps_taken < max_steps;
+                    game_trace.finalize(*final_points, won);
+                }
+
                 return GameResult {
                     points: *final_points,
                     steps_taken,
                     max_steps,
+                    trace,
                 };
             }
         }
+    }
+}
+
+/// Convert a game action to its ID (0-3).
+fn game_action_to_id(action: &GameAction) -> u8 {
+    match action {
+        MoveUp => 0,
+        MoveDown => 1,
+        MoveRight => 2,
+        MoveLeft => 3,
     }
 }
 
@@ -201,6 +250,7 @@ mod smart_network_game_adapter_tests {
             points: 100,
             steps_taken: 10,
             max_steps: 30,
+            trace: None,
         };
 
         assert_eq!(result.efficiency(), 10.0);

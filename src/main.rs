@@ -1,16 +1,27 @@
 use std::collections::HashSet;
 
 use log::info;
+use rand::prelude::*;
 use rayon::prelude::*;
 
 use common::setup;
 use config::cultus_config::CultusConfig;
 use evolution::chromosome::Chromosome;
 use evolution::chromosome_with_fitness::ChromosomeWithFitness;
-use evolution::evolution::{evolve, generate_initial_population, CrossoverStrategy, SelectionStrategy};
+use evolution::curriculum::CurriculumManager;
+use evolution::direct_encoding::{DirectNetwork, MemoryConfig};
+use evolution::evolution::{
+    evolve, evolve_direct, generate_initial_direct_population,
+    generate_initial_population, CrossoverStrategy, DirectEvolutionConfig,
+    DirectNetworkWithFitness, DirectPopulationStats, SelectionStrategy,
+};
+use evolution::local_search::{LocalSearchConfig, LocalSearchStrategy};
+use evolution::novelty::{
+    BehavioralSignature, GameTrace, MilestoneTracker, NoveltyArchive, NoveltyConfig, NoveltyFitness,
+};
 use game::level::Level;
 use smart_network::smart_network::SmartNetwork;
-use smart_network_game_adapter::{play_game_with_network, GameResult};
+use smart_network_game_adapter::{play_game_with_network, play_game_with_network_traced, GameResult};
 
 mod common;
 mod config;
@@ -56,6 +67,315 @@ fn main() {
 
     let config = CultusConfig::new().unwrap();
 
+    // Check if we should use the new direct encoding system
+    let use_direct_encoding = config.evolution.use_direct_encoding.unwrap_or(true);
+
+    if use_direct_encoding {
+        info!("Using new DirectNetwork-based evolution");
+        run_direct_evolution(&config);
+    } else {
+        info!("Using legacy bit-string encoding");
+        run_legacy_evolution(&config);
+    }
+}
+
+/// Run evolution using the new DirectNetwork encoding system.
+fn run_direct_evolution(config: &CultusConfig) {
+    let evolution_config = &config.evolution;
+    let smart_network_config = &config.smart_network;
+    let game_config = &config.game;
+
+    // Load levels
+    let levels: Vec<Level> = game_config
+        .level_to_times_to_play
+        .keys()
+        .map(|&lvl_idx| {
+            let path = format!("{}level_{}.lvl", game_config.levels_dir_path, lvl_idx);
+            Level::from_lvl_file(&path, game_config.max_steps)
+        })
+        .collect();
+
+    for (idx, lvl) in levels.iter().enumerate() {
+        info!(
+            "Level {}: size={}x{}, player={:?}, total_points={}",
+            idx + 1,
+            lvl.get_size_rows(),
+            lvl.get_size_column(),
+            lvl.get_player_position(),
+            lvl.get_point_amount()
+        );
+    }
+
+    // Configure DirectNetwork evolution
+    let memory_config = if smart_network_config.mem_addr_bits > 0 {
+        Some(MemoryConfig {
+            addr_bits: smart_network_config.mem_addr_bits as u8,
+            data_bits: smart_network_config.mem_rw_bits as u8,
+        })
+    } else {
+        None
+    };
+
+    // Calculate total output count including memory control signals
+    // Memory outputs: 2 * addr_bits (read addr + write addr) + data_bits (write data)
+    let memory_output_count = if memory_config.is_some() {
+        2 * smart_network_config.mem_addr_bits + smart_network_config.mem_rw_bits
+    } else {
+        0
+    };
+    let total_output_count = smart_network_config.output_count + memory_output_count;
+
+    // Total input count includes memory feedback
+    let total_input_count = smart_network_config.input_count + smart_network_config.mem_rw_bits;
+
+    let direct_config = DirectEvolutionConfig {
+        gate_count: evolution_config.initial_gate_count.unwrap_or(100),
+        input_count: total_input_count as u16,
+        output_count: total_output_count as u16,
+        memory_config: memory_config.clone(),
+        elite_factor: evolution_config.elite_factor,
+        tournament_size: evolution_config.tournament_size,
+        crossover_rate: 0.8,
+        mutation_rate: 0.3,
+        use_module_crossover: true,
+        use_local_search: evolution_config.use_local_search.unwrap_or(false),
+        local_search_config: Some(LocalSearchConfig {
+            num_trials: 20,
+            max_stagnation: 5,
+            strategy: LocalSearchStrategy::Hybrid {
+                lamarckian_probability: 0.5,
+            },
+        }),
+    };
+
+    // Initialize curriculum manager
+    let mut curriculum = CurriculumManager::default_curriculum();
+
+    // Initialize novelty archive and config
+    let novelty_config = NoveltyConfig::default();
+    let mut novelty_archive = NoveltyArchive::new(
+        novelty_config.archive_size,
+        novelty_config.k_nearest,
+        novelty_config.archive_threshold,
+    );
+
+    // Generate initial population
+    info!(
+        "Generating initial population of {} DirectNetworks with {} gates (inputs={}, outputs={})...",
+        evolution_config.initial_population_count, direct_config.gate_count,
+        direct_config.input_count, direct_config.output_count
+    );
+    let mut population =
+        generate_initial_direct_population(evolution_config.initial_population_count, &direct_config);
+    info!("Initial population generated.");
+
+    // Main evolution loop
+    for generation in 0.. {
+        // Get current curriculum stage configuration (clone to avoid borrow issues)
+        let current_stage = curriculum.current_stage();
+        let stage_level_indices = current_stage.level_indices.clone();
+        let plays_per_level = current_stage.plays_per_level;
+
+        let stage_levels: Vec<Level> = stage_level_indices
+            .iter()
+            .filter_map(|&idx| levels.get(idx.saturating_sub(1)).cloned())
+            .collect();
+
+        let levels_for_eval: Vec<Level> = if stage_levels.is_empty() {
+            info!("Warning: No levels found for current stage, using all levels");
+            levels.clone()
+        } else {
+            stage_levels.clone()
+        };
+
+        // Parallel fitness evaluation with novelty
+        let evaluated: Vec<(DirectNetwork, f64, Option<BehavioralSignature>)> = population
+            .par_iter()
+            .map(|network| {
+                let (fitness, signature) = evaluate_direct_network_with_novelty(
+                    network,
+                    &levels_for_eval,
+                    plays_per_level,
+                    game_config.visibility_distance,
+                    novelty_config.use_milestones,
+                );
+                (network.clone(), fitness, signature)
+            })
+            .collect();
+
+        // Compute novelty scores
+        let population_signatures: Vec<BehavioralSignature> = evaluated
+            .iter()
+            .filter_map(|(_, _, sig)| sig.clone())
+            .collect();
+
+        let evaluated_with_novelty: Vec<DirectNetworkWithFitness> = evaluated
+            .iter()
+            .map(|(network, objective_fitness, signature)| {
+                let novelty_score = signature
+                    .as_ref()
+                    .map(|sig| novelty_archive.compute_novelty(sig, &population_signatures))
+                    .unwrap_or(0.0);
+
+                // Combined fitness
+                let combined = NoveltyFitness::compute(
+                    *objective_fitness,
+                    novelty_score,
+                    0.0, // milestone bonus already included in objective
+                    novelty_config.objective_weight,
+                    novelty_config.novelty_weight,
+                );
+
+                DirectNetworkWithFitness::new(network.clone(), combined.combined_fitness)
+            })
+            .collect();
+
+        // Update novelty archive with best performers
+        for (_, _, signature) in &evaluated {
+            if let Some(sig) = signature {
+                let novelty = novelty_archive.compute_novelty(sig, &population_signatures);
+                novelty_archive.maybe_add(sig.clone(), novelty);
+            }
+        }
+
+        // Calculate statistics
+        let stats = DirectPopulationStats::compute(&evaluated_with_novelty);
+
+        // Find best for logging
+        let best = evaluated_with_novelty
+            .iter()
+            .max_by(|a, b| a.fitness.partial_cmp(&b.fitness).unwrap());
+
+        let best_objective = evaluated
+            .iter()
+            .map(|(_, f, _)| *f)
+            .fold(f64::NEG_INFINITY, f64::max);
+
+        info!(
+            "Gen {} [Stage {}]: max={:.1}, avg={:.1}, obj_max={:.1}, gates={:.1}, div={:.2}, archive={}",
+            generation,
+            curriculum.current_stage_index() + 1,
+            stats.max_fitness,
+            stats.avg_fitness,
+            best_objective,
+            stats.avg_gate_count,
+            stats.diversity,
+            novelty_archive.len()
+        );
+
+        // Check for curriculum advancement
+        if curriculum.update(best_objective) {
+            info!(
+                "*** Advanced to curriculum stage {} ***",
+                curriculum.current_stage_index() + 1
+            );
+            // Migrate networks to new stage if needed
+            let mut rng = thread_rng();
+            for network in &mut population {
+                curriculum.migrate_network(network, &mut rng);
+            }
+        }
+
+        // Persist best if configured
+        if evolution_config.persist_top_chromosome {
+            if let Some(best_network) = best {
+                info!(
+                    "Best network: {} gates, fitness={:.1}",
+                    best_network.network.gates.len(),
+                    best_network.fitness
+                );
+            }
+        }
+
+        // Evolve next generation (capture levels_for_eval and plays_per_level by value)
+        let vis_dist = game_config.visibility_distance;
+        let evaluate_fn = |network: &DirectNetwork| -> f64 {
+            evaluate_direct_network_simple(
+                network,
+                &levels_for_eval,
+                plays_per_level,
+                vis_dist,
+            )
+        };
+
+        population = evolve_direct(&evaluated_with_novelty, &direct_config, evaluate_fn);
+    }
+}
+
+/// Evaluate a DirectNetwork and return fitness with optional behavioral signature.
+fn evaluate_direct_network_with_novelty(
+    network: &DirectNetwork,
+    levels: &[Level],
+    plays_per_level: usize,
+    visibility_distance: usize,
+    use_milestones: bool,
+) -> (f64, Option<BehavioralSignature>) {
+    let mut smart_network = SmartNetwork::from_direct_network_auto(network.clone());
+    let mut total_points = 0.0;
+    let mut all_traces: Vec<GameTrace> = Vec::new();
+    let mut milestone_tracker = MilestoneTracker::new();
+
+    for level in levels {
+        for _ in 0..plays_per_level {
+            let result = play_game_with_network_traced(
+                &mut smart_network,
+                level.clone(),
+                visibility_distance,
+                false,
+                true, // collect trace
+            );
+
+            total_points += result.points as f64;
+
+            if let Some(trace) = result.trace {
+                // Check milestones
+                if use_milestones {
+                    total_points += milestone_tracker.check_milestones(&trace);
+                }
+                all_traces.push(trace);
+            }
+        }
+    }
+
+    // Combine traces into a single behavioral signature
+    let signature = if !all_traces.is_empty() {
+        // Use the first trace for simplicity (could combine them)
+        Some(BehavioralSignature::from_trace(&all_traces[0]))
+    } else {
+        None
+    };
+
+    let avg_points = total_points / (levels.len() * plays_per_level) as f64;
+    (avg_points, signature)
+}
+
+/// Simple evaluation without novelty (for local search).
+fn evaluate_direct_network_simple(
+    network: &DirectNetwork,
+    levels: &[Level],
+    plays_per_level: usize,
+    visibility_distance: usize,
+) -> f64 {
+    let mut smart_network = SmartNetwork::from_direct_network_auto(network.clone());
+    let mut total_points = 0.0;
+
+    for level in levels {
+        for _ in 0..plays_per_level {
+            let result = play_game_with_network(
+                &mut smart_network,
+                level.clone(),
+                visibility_distance,
+                false,
+            );
+            total_points += result.points as f64;
+        }
+    }
+
+    total_points / (levels.len() * plays_per_level) as f64
+}
+
+/// Run evolution using the legacy bit-string encoding (backward compatibility).
+fn run_legacy_evolution(config: &CultusConfig) {
     let evolution_config = &config.evolution;
     let smart_network_config = &config.smart_network;
     let game_config = &config.game;
@@ -327,6 +647,7 @@ mod main_tests {
                 points: i * 10,
                 steps_taken: 20,
                 max_steps: 30,
+                trace: None,
             })
             .collect();
 
@@ -342,6 +663,7 @@ mod main_tests {
                 points: 50,
                 steps_taken: 20,
                 max_steps: 30,
+                trace: None,
             })
             .collect();
 
@@ -357,6 +679,7 @@ mod main_tests {
                 points: 100,
                 steps_taken: 20,
                 max_steps: 30,
+                trace: None,
             })
             .collect();
 
@@ -368,10 +691,10 @@ mod main_tests {
     fn test_consistency_low() {
         // Highly variable scores = low consistency
         let results: Vec<GameResult> = vec![
-            GameResult { points: 0, steps_taken: 30, max_steps: 30 },
-            GameResult { points: 200, steps_taken: 10, max_steps: 30 },
-            GameResult { points: 0, steps_taken: 30, max_steps: 30 },
-            GameResult { points: 200, steps_taken: 10, max_steps: 30 },
+            GameResult { points: 0, steps_taken: 30, max_steps: 30, trace: None },
+            GameResult { points: 200, steps_taken: 10, max_steps: 30, trace: None },
+            GameResult { points: 0, steps_taken: 30, max_steps: 30, trace: None },
+            GameResult { points: 200, steps_taken: 10, max_steps: 30, trace: None },
         ];
 
         let score = calculate_consistency(&results);

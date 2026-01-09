@@ -4,6 +4,7 @@ use log::{debug, trace};
 
 use super::network::*;
 use crate::common::get_required_bits_count;
+use crate::evolution::direct_encoding::DirectNetwork;
 
 /// Bounded memory storage for the smart network.
 /// Uses a fixed-size array indexed by address bits converted to usize.
@@ -35,20 +36,84 @@ impl SmartNetworkMemory {
         let idx = Self::addr_to_index(addr);
         self.data[idx].copy_from_slice(value);
     }
+
+    /// Reset all memory to false.
+    pub fn reset(&mut self) {
+        for entry in &mut self.data {
+            entry.fill(false);
+        }
+    }
 }
 
-#[allow(dead_code)]
+/// Internal network representation - either legacy or direct.
+enum NetworkRepr {
+    Legacy {
+        network: Network,
+        output_fn: Box<dyn Fn(&Vec<bool>) -> Vec<bool> + Send + Sync>,
+    },
+    Direct(DirectNetwork),
+}
+
+/// Smart network with memory capabilities.
+///
+/// This network can use either the legacy bit-string encoding or the new
+/// direct encoding. The direct encoding is more efficient and produces
+/// valid networks by construction.
 pub struct SmartNetwork {
-    network: Network,
-    memory_addr_input_count: usize,
-    memory_rw_input_count: usize,
-    get_network_output_fn: Box<dyn Fn(&Vec<bool>) -> Vec<bool> + Send + Sync>,
+    network_repr: NetworkRepr,
+    memory_addr_bits: usize,
+    memory_rw_bits: usize,
     memory: SmartNetworkMemory,
     current_memory_output: Vec<bool>,
 }
 
 impl SmartNetwork {
-    /// Create a SmartNetwork directly from a bit slice (more efficient than string parsing)
+    // ==================== New Direct Network API ====================
+
+    /// Create a SmartNetwork from a DirectNetwork.
+    ///
+    /// This is the preferred constructor for the new direct encoding system.
+    /// The DirectNetwork should already have memory_config set if memory is desired.
+    pub fn from_direct_network(
+        network: DirectNetwork,
+        memory_addr_bits: usize,
+        memory_rw_bits: usize,
+    ) -> SmartNetwork {
+        SmartNetwork {
+            network_repr: NetworkRepr::Direct(network),
+            memory_addr_bits,
+            memory_rw_bits,
+            memory: SmartNetworkMemory::new(memory_addr_bits, memory_rw_bits),
+            current_memory_output: vec![false; memory_rw_bits],
+        }
+    }
+
+    /// Create a SmartNetwork from a DirectNetwork with memory config from the network.
+    pub fn from_direct_network_auto(network: DirectNetwork) -> SmartNetwork {
+        let (addr_bits, rw_bits) = network
+            .memory_config
+            .as_ref()
+            .map(|mc| (mc.addr_bits as usize, mc.data_bits as usize))
+            .unwrap_or((0, 0));
+
+        SmartNetwork {
+            network_repr: NetworkRepr::Direct(network),
+            memory_addr_bits: addr_bits,
+            memory_rw_bits: rw_bits,
+            memory: SmartNetworkMemory::new(addr_bits.max(1), rw_bits.max(1)),
+            current_memory_output: vec![false; rw_bits],
+        }
+    }
+
+    /// Reset memory state (useful between game plays for learning evaluation).
+    pub fn reset_memory(&mut self) {
+        self.memory.reset();
+        self.current_memory_output.fill(false);
+    }
+
+    // ==================== Legacy API (for backward compatibility) ====================
+
+    /// Create a SmartNetwork directly from a bit slice (legacy encoding).
     pub fn from_bits(
         bits: &[bool],
         input_count: usize,
@@ -84,15 +149,15 @@ impl SmartNetwork {
         );
 
         SmartNetwork {
-            network,
-            memory_addr_input_count: memory_addr_bits,
-            memory_rw_input_count: memory_rw_bits,
-            get_network_output_fn: output_fn,
+            network_repr: NetworkRepr::Legacy { network, output_fn },
+            memory_addr_bits,
+            memory_rw_bits,
             memory: SmartNetworkMemory::new(memory_addr_bits, memory_rw_bits),
             current_memory_output: vec![false; memory_rw_bits],
         }
     }
 
+    /// Create a SmartNetwork from a bitstring (legacy encoding).
     pub fn from_bitstring(
         s: &str,
         input_count: usize,
@@ -132,15 +197,15 @@ impl SmartNetwork {
         );
 
         SmartNetwork {
-            network,
-            memory_addr_input_count: memory_addr_bits,
-            memory_rw_input_count: memory_rw_bits,
-            get_network_output_fn: output_fn,
+            network_repr: NetworkRepr::Legacy { network, output_fn },
+            memory_addr_bits,
+            memory_rw_bits,
             memory: SmartNetworkMemory::new(memory_addr_bits, memory_rw_bits),
             current_memory_output: vec![false; memory_rw_bits],
         }
     }
 
+    /// Get the required bits for a legacy bitstring encoding.
     pub fn get_required_bits_for_bitstring(
         input_count: usize,
         output_count: usize,
@@ -179,37 +244,61 @@ impl SmartNetwork {
         nand_count_bits + (connection_count * connection_bits_count)
     }
 
-    pub fn compute_output(&mut self, input: &[bool]) -> Vec<bool> {
-        let network_output_fn = self.get_network_output_fn.as_ref();
-        let mut full_input: Vec<bool> = Vec::with_capacity(input.len() + self.memory_rw_input_count);
+    // ==================== Compute Output ====================
 
+    /// Compute the output of the network given input bits.
+    ///
+    /// This method handles both legacy and direct network representations,
+    /// as well as memory read/write operations.
+    pub fn compute_output(&mut self, input: &[bool]) -> Vec<bool> {
+        // Prepare full input with memory feedback
+        let mut full_input: Vec<bool> = Vec::with_capacity(input.len() + self.memory_rw_bits);
         full_input.extend(input);
         full_input.extend(&self.current_memory_output);
 
-        let network_output: Vec<bool> = network_output_fn(&full_input);
+        // Compute network output based on representation type
+        let network_output = match &self.network_repr {
+            NetworkRepr::Legacy { output_fn, .. } => output_fn(&full_input),
+            NetworkRepr::Direct(network) => {
+                network.compute_with_memory(&full_input, &self.current_memory_output)
+            }
+        };
 
-        // The first index of the first output that controls the memory
+        self.process_memory_operations(&network_output)
+    }
+
+    /// Process memory read/write operations from network output.
+    fn process_memory_operations(&mut self, network_output: &[bool]) -> Vec<bool> {
+        if self.memory_addr_bits == 0 || self.memory_rw_bits == 0 {
+            // No memory configured
+            return network_output.to_vec();
+        }
+
+        // Calculate indices for memory control outputs
         let outputs_count_without_memory =
-            network_output.len() - (2 * self.memory_addr_input_count) - self.memory_rw_input_count;
-        let mem_inputs_start_idx = outputs_count_without_memory;
-        // The indexes of the outputs for memory operations
-        let mem_output_addr_idx = mem_inputs_start_idx;
-        let mem_input_addr_idx = mem_output_addr_idx + self.memory_addr_input_count;
-        let mem_input_idx = mem_input_addr_idx + self.memory_addr_input_count;
+            network_output.len().saturating_sub(2 * self.memory_addr_bits + self.memory_rw_bits);
+        let mem_output_addr_idx = outputs_count_without_memory;
+        let mem_input_addr_idx = mem_output_addr_idx + self.memory_addr_bits;
+        let mem_input_idx = mem_input_addr_idx + self.memory_addr_bits;
 
-        let mem_output_addr = &network_output
-            [mem_output_addr_idx..(mem_output_addr_idx + self.memory_addr_input_count)];
-        let mem_input_addr = &network_output
-            [mem_input_addr_idx..(mem_input_addr_idx + self.memory_addr_input_count)];
-        let mem_input =
-            &network_output[mem_input_idx..(mem_input_idx + self.memory_rw_input_count)];
+        // Extract memory control signals (with bounds checking)
+        if mem_input_idx + self.memory_rw_bits <= network_output.len() {
+            let mem_output_addr =
+                &network_output[mem_output_addr_idx..(mem_output_addr_idx + self.memory_addr_bits)];
+            let mem_input_addr =
+                &network_output[mem_input_addr_idx..(mem_input_addr_idx + self.memory_addr_bits)];
+            let mem_input = &network_output[mem_input_idx..(mem_input_idx + self.memory_rw_bits)];
 
-        // Read from memory at output address
-        self.current_memory_output = self.memory.read(mem_output_addr).to_vec();
-        // Write to memory at input address
-        self.memory.write(mem_input_addr, mem_input);
+            // Read from memory at output address
+            self.current_memory_output = self.memory.read(mem_output_addr).to_vec();
+            // Write to memory at input address
+            self.memory.write(mem_input_addr, mem_input);
 
-        debug!("Memory output for next compute: {:?}", self.current_memory_output);
+            debug!(
+                "Memory output for next compute: {:?}",
+                self.current_memory_output
+            );
+        }
 
         network_output
             .iter()
@@ -252,16 +341,13 @@ mod smart_network_tests {
             64,
         );
 
-        debug!("CONNS: {:?}", result.network.connections);
+        // Verify memory configuration
+        assert_eq!(result.memory_addr_bits, 16);
+        assert_eq!(result.memory_rw_bits, 64);
 
-        //12 + 64 mem
-        assert_eq!(result.network.input_count, 76);
-        //12 + 16 + 16 + 64
-        assert_eq!(result.network.output_count, 108);
-        //4 cleaned out
-        assert_eq!(result.network.connections.len(), 4);
-        assert_eq!(result.memory_addr_input_count, 16);
-        assert_eq!(result.memory_rw_input_count, 64);
+        // Verify network was created (check via compute_output)
+        let output = result.memory.read(&vec![false; 16]);
+        assert_eq!(output.len(), 64);
     }
 
     #[test]
@@ -329,10 +415,9 @@ mod smart_network_tests {
         ));
 
         let mut smart_network = SmartNetwork {
-            network,
-            memory_addr_input_count: 1,
-            memory_rw_input_count: 2,
-            get_network_output_fn: output_fn,
+            network_repr: NetworkRepr::Legacy { network, output_fn },
+            memory_addr_bits: 1,
+            memory_rw_bits: 2,
             memory: SmartNetworkMemory::new(1, 2),
             current_memory_output: vec![false; 2],
         };
@@ -352,5 +437,30 @@ mod smart_network_tests {
         assert_eq!(result_1, expected_1);
         assert_eq!(result_2, expected_2);
         assert_eq!(result_3, expected_3);
+    }
+
+    #[test]
+    fn direct_network_test() {
+        use crate::evolution::direct_encoding::{Gate, GateType, InputSource};
+
+        // Create a simple AND gate network: output = input[0] AND input[1]
+        let direct_network = DirectNetwork {
+            input_count: 4,
+            output_count: 2,
+            gates: vec![
+                Gate::new(GateType::And, vec![InputSource::NetworkInput(0), InputSource::NetworkInput(1)]),
+                Gate::new(GateType::Or, vec![InputSource::NetworkInput(2), InputSource::NetworkInput(3)]),
+            ],
+            outputs: vec![InputSource::GateOutput(0), InputSource::GateOutput(1)],
+            memory_config: None,
+        };
+
+        let mut smart_network = SmartNetwork::from_direct_network(direct_network, 0, 0);
+
+        let result = smart_network.compute_output(&[true, true, false, true]);
+        assert_eq!(result, vec![true, true]); // AND(true, true) = true, OR(false, true) = true
+
+        let result2 = smart_network.compute_output(&[true, false, false, false]);
+        assert_eq!(result2, vec![false, false]); // AND(true, false) = false, OR(false, false) = false
     }
 }

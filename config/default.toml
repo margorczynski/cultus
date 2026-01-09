@@ -4,6 +4,10 @@ tournament_size = 4
 mutation_rate = 0.05
 elite_factor = 0.1
 persist_top_chromosome = false
+# New DirectNetwork-based evolution options
+use_direct_encoding = true
+initial_gate_count = 100
+use_local_search = false
 
 [smart_network]
 input_count = 149
