@@ -7,10 +7,10 @@ use common::setup;
 use config::cultus_config::CultusConfig;
 use evolution::chromosome::Chromosome;
 use evolution::chromosome_with_fitness::ChromosomeWithFitness;
-use evolution::evolution::{evolve, generate_initial_population, SelectionStrategy};
+use evolution::evolution::{evolve, generate_initial_population, CrossoverStrategy, SelectionStrategy};
 use game::level::Level;
 use smart_network::smart_network::SmartNetwork;
-use smart_network_game_adapter::play_game_with_network;
+use smart_network_game_adapter::{play_game_with_network, GameResult};
 
 mod common;
 mod config;
@@ -18,6 +18,38 @@ mod evolution;
 mod game;
 mod smart_network;
 mod smart_network_game_adapter;
+
+/// Multi-objective fitness result for a chromosome
+#[derive(Debug, Clone)]
+pub struct FitnessMetrics {
+    /// Total points collected across all levels
+    pub total_points: f64,
+    /// Consistency score (lower variance = higher score)
+    pub consistency: f64,
+    /// Efficiency (points per step)
+    pub efficiency: f64,
+    /// Learning score (improvement across plays)
+    pub learning: f64,
+    /// Combined fitness score
+    pub combined: f64,
+}
+
+impl FitnessMetrics {
+    /// Calculate combined fitness from components
+    pub fn calculate_combined(&self) -> f64 {
+        // Weighted combination of fitness components
+        // Points are the primary objective, but we reward consistency, efficiency, and learning
+        let points_weight = 1.0;
+        let consistency_weight = 0.2;
+        let efficiency_weight = 0.1;
+        let learning_weight = 0.3;
+
+        self.total_points * points_weight
+            + self.consistency * consistency_weight
+            + self.efficiency * efficiency_weight
+            + self.learning * learning_weight
+    }
+}
 
 fn main() {
     setup();
@@ -74,67 +106,83 @@ fn main() {
 
     // Main evolution loop
     for generation in 0.. {
-        // Parallel fitness evaluation
-        let evaluated: Vec<ChromosomeWithFitness<u32>> = population
+        // Parallel fitness evaluation with multi-objective metrics
+        let evaluated: Vec<(Chromosome, FitnessMetrics)> = population
             .par_iter()
             .map(|chromosome| {
-                let fitness = evaluate_chromosome(
+                let metrics = evaluate_chromosome_multi_objective(
                     chromosome,
                     &levels,
                     &game_config.level_to_times_to_play,
                     smart_network_config,
                     game_config.visibility_distance,
                 );
-                ChromosomeWithFitness::new(chromosome.clone(), fitness)
+                (chromosome.clone(), metrics)
             })
             .collect();
 
         // Calculate statistics
-        let fitness_sum: u64 = evaluated.iter().map(|c| c.fitness as u64).sum();
-        let fitness_max = evaluated.iter().map(|c| c.fitness).max().unwrap_or(0);
-        let fitness_avg = fitness_sum as f64 / evaluated.len() as f64;
+        let fitness_values: Vec<f64> = evaluated.iter().map(|(_, m)| m.combined).collect();
+        let fitness_max = fitness_values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        let fitness_avg = fitness_values.iter().sum::<f64>() / fitness_values.len() as f64;
 
-        info!(
-            "Generation {}: max={}, avg={:.2}, population={}",
-            generation,
-            fitness_max,
-            fitness_avg,
-            evaluated.len()
-        );
+        // Find best metrics for detailed logging
+        let best = evaluated.iter().max_by(|a, b| {
+            a.1.combined.partial_cmp(&b.1.combined).unwrap()
+        });
+
+        if let Some((_, best_metrics)) = best {
+            info!(
+                "Gen {}: max={:.1}, avg={:.1} | best: pts={:.0}, cons={:.2}, eff={:.2}, learn={:.2}",
+                generation,
+                fitness_max,
+                fitness_avg,
+                best_metrics.total_points,
+                best_metrics.consistency,
+                best_metrics.efficiency,
+                best_metrics.learning
+            );
+        }
 
         // Persist top chromosome if configured
         if evolution_config.persist_top_chromosome {
-            if let Some(top) = evaluated.iter().max() {
-                info!("Top chromosome: {}", top.chromosome);
+            if let Some((top_chromosome, _)) = best {
+                info!("Top chromosome: {}", top_chromosome);
             }
         }
 
-        // Convert to HashSet for evolution
-        let evaluated_set: HashSet<ChromosomeWithFitness<u32>> =
-            evaluated.into_iter().collect();
+        // Convert to ChromosomeWithFitness for evolution
+        let evaluated_with_fitness: Vec<ChromosomeWithFitness<u32>> = evaluated
+            .into_iter()
+            .map(|(c, m)| ChromosomeWithFitness::new(c, m.combined.floor() as u32))
+            .collect();
 
-        // Evolve next generation
+        let evaluated_set: HashSet<ChromosomeWithFitness<u32>> =
+            evaluated_with_fitness.into_iter().collect();
+
+        // Evolve next generation using two-point crossover for better gene mixing
         population = evolve(
             &evaluated_set,
             SelectionStrategy::Tournament(evolution_config.tournament_size),
+            CrossoverStrategy::TwoPoint,
             evolution_config.elite_factor,
         );
     }
 }
 
-fn evaluate_chromosome(
+/// Evaluate a chromosome with multi-objective fitness metrics
+fn evaluate_chromosome_multi_objective(
     chromosome: &Chromosome,
     levels: &[Level],
     level_to_times: &std::collections::HashMap<usize, usize>,
     smart_network_config: &config::smart_network_config::SmartNetworkConfig,
     visibility_distance: usize,
-) -> u32 {
-    // Convert chromosome to bitstring
-    let bitstring: String = chromosome.genes.iter().map(|b| if *b { '1' } else { '0' }).collect();
+) -> FitnessMetrics {
+    // Convert BitVec to Vec<bool> for SmartNetwork::from_bits
+    let bits: Vec<bool> = chromosome.genes.iter().map(|b| *b).collect();
 
-    // Create smart network from chromosome
-    let mut smart_network = SmartNetwork::from_bitstring(
-        &bitstring,
+    let mut smart_network = SmartNetwork::from_bits(
+        &bits,
         smart_network_config.input_count,
         smart_network_config.output_count,
         smart_network_config.nand_count_bits,
@@ -142,32 +190,207 @@ fn evaluate_chromosome(
         smart_network_config.mem_rw_bits,
     );
 
-    // Play each level multiple times and aggregate fitness
-    let mut total_fitness: f64 = 0.0;
+    let mut all_results: Vec<GameResult> = Vec::new();
+    let mut total_points: f64 = 0.0;
+    let mut total_efficiency: f64 = 0.0;
+    let mut total_learning: f64 = 0.0;
 
     for (&level_idx, &times) in level_to_times {
         let level = &levels[level_idx - 1];
 
-        // Play the level multiple times
-        let mut results: Vec<u32> = Vec::with_capacity(times);
+        // Play the level multiple times, tracking results for learning detection
+        let mut level_results: Vec<GameResult> = Vec::with_capacity(times);
         for _ in 0..times {
-            let points = play_game_with_network(
+            let result = play_game_with_network(
                 &mut smart_network,
                 level.clone(),
                 visibility_distance,
                 false,
-            ) as u32;
-            results.push(points);
+            );
+            level_results.push(result);
         }
 
-        // Take Pareto-optimal 20% (best results)
-        results.sort_unstable();
-        let pareto_count = ((results.len() as f64) * 0.2).ceil() as usize;
-        let pareto_sum: u32 = results.iter().rev().take(pareto_count).sum();
-        let pareto_avg = pareto_sum as f64 / pareto_count as f64;
+        // Calculate learning score: do later plays score better than earlier plays?
+        let learning_score = calculate_learning_score(&level_results);
+        total_learning += learning_score;
 
-        total_fitness += pareto_avg;
+        // Calculate efficiency: points per step
+        let level_efficiency: f64 = level_results.iter().map(|r| r.efficiency()).sum::<f64>()
+            / level_results.len() as f64;
+        total_efficiency += level_efficiency;
+
+        // Aggregate points (use all results, not just top 20%)
+        let level_points: f64 = level_results.iter().map(|r| r.points as f64).sum::<f64>()
+            / level_results.len() as f64;
+        total_points += level_points;
+
+        all_results.extend(level_results);
     }
 
-    total_fitness.floor() as u32
+    // Calculate consistency: inverse of coefficient of variation
+    let consistency = calculate_consistency(&all_results);
+
+    let metrics = FitnessMetrics {
+        total_points,
+        consistency,
+        efficiency: total_efficiency,
+        learning: total_learning,
+        combined: 0.0, // Will be calculated
+    };
+
+    FitnessMetrics {
+        combined: metrics.calculate_combined(),
+        ..metrics
+    }
+}
+
+/// Calculate learning score based on improvement across sequential plays
+/// Returns positive value if performance improves over time
+fn calculate_learning_score(results: &[GameResult]) -> f64 {
+    if results.len() < 2 {
+        return 0.0;
+    }
+
+    // Split results into first half and second half
+    let mid = results.len() / 2;
+    let first_half_avg: f64 = results[..mid].iter().map(|r| r.points as f64).sum::<f64>() / mid as f64;
+    let second_half_avg: f64 = results[mid..].iter().map(|r| r.points as f64).sum::<f64>()
+        / (results.len() - mid) as f64;
+
+    // Learning score is the improvement (positive if getting better)
+    let improvement = second_half_avg - first_half_avg;
+
+    // Also check for trend: count how many consecutive increases we see
+    let mut trend_score = 0.0;
+    let window_size = 5.min(results.len());
+    if results.len() >= window_size * 2 {
+        // Start at window_size * 2 to have room for previous window
+        for i in (window_size * 2)..=results.len() {
+            let current_window: f64 = results[(i - window_size)..i]
+                .iter()
+                .map(|r| r.points as f64)
+                .sum::<f64>();
+            let prev_window: f64 = results[(i - window_size * 2)..(i - window_size)]
+                .iter()
+                .map(|r| r.points as f64)
+                .sum::<f64>();
+            if current_window > prev_window {
+                trend_score += 1.0;
+            }
+        }
+        let num_comparisons = results.len() - window_size * 2 + 1;
+        if num_comparisons > 0 {
+            trend_score /= num_comparisons as f64;
+        }
+    }
+
+    // Combine improvement and trend
+    improvement.max(0.0) + trend_score * 10.0
+}
+
+/// Calculate consistency score based on variance of results
+/// Higher score means more consistent performance
+fn calculate_consistency(results: &[GameResult]) -> f64 {
+    if results.is_empty() {
+        return 0.0;
+    }
+
+    let points: Vec<f64> = results.iter().map(|r| r.points as f64).collect();
+    let mean = points.iter().sum::<f64>() / points.len() as f64;
+
+    if mean == 0.0 {
+        return 0.0;
+    }
+
+    let variance = points.iter().map(|p| (p - mean).powi(2)).sum::<f64>() / points.len() as f64;
+    let std_dev = variance.sqrt();
+
+    // Coefficient of variation (lower is more consistent)
+    let cv = std_dev / mean;
+
+    // Convert to consistency score (higher is better)
+    // Use exponential decay so high variance is heavily penalized
+    let consistency = (-cv).exp() * mean;
+
+    consistency
+}
+
+#[cfg(test)]
+mod main_tests {
+    use super::*;
+
+    #[test]
+    fn test_learning_score_improvement() {
+        // Simulate improving performance
+        let results: Vec<GameResult> = (0..10)
+            .map(|i| GameResult {
+                points: i * 10,
+                steps_taken: 20,
+                max_steps: 30,
+            })
+            .collect();
+
+        let score = calculate_learning_score(&results);
+        assert!(score > 0.0, "Learning score should be positive for improving results");
+    }
+
+    #[test]
+    fn test_learning_score_no_improvement() {
+        // Simulate flat performance
+        let results: Vec<GameResult> = (0..10)
+            .map(|_| GameResult {
+                points: 50,
+                steps_taken: 20,
+                max_steps: 30,
+            })
+            .collect();
+
+        let score = calculate_learning_score(&results);
+        assert!(score >= 0.0, "Learning score should be non-negative");
+    }
+
+    #[test]
+    fn test_consistency_high() {
+        // All same scores = high consistency
+        let results: Vec<GameResult> = (0..10)
+            .map(|_| GameResult {
+                points: 100,
+                steps_taken: 20,
+                max_steps: 30,
+            })
+            .collect();
+
+        let score = calculate_consistency(&results);
+        assert!(score > 50.0, "Consistency should be high for uniform results");
+    }
+
+    #[test]
+    fn test_consistency_low() {
+        // Highly variable scores = low consistency
+        let results: Vec<GameResult> = vec![
+            GameResult { points: 0, steps_taken: 30, max_steps: 30 },
+            GameResult { points: 200, steps_taken: 10, max_steps: 30 },
+            GameResult { points: 0, steps_taken: 30, max_steps: 30 },
+            GameResult { points: 200, steps_taken: 10, max_steps: 30 },
+        ];
+
+        let score = calculate_consistency(&results);
+        // With high variance, consistency should be lower
+        assert!(score < 100.0, "Consistency should be lower for variable results");
+    }
+
+    #[test]
+    fn test_fitness_metrics_combined() {
+        let metrics = FitnessMetrics {
+            total_points: 100.0,
+            consistency: 50.0,
+            efficiency: 5.0,
+            learning: 10.0,
+            combined: 0.0,
+        };
+
+        let combined = metrics.calculate_combined();
+        // 100 * 1.0 + 50 * 0.2 + 5 * 0.1 + 10 * 0.3 = 100 + 10 + 0.5 + 3 = 113.5
+        assert!((combined - 113.5).abs() < 0.01);
+    }
 }

@@ -11,19 +11,47 @@ use crate::smart_network::smart_network::SmartNetwork;
 
 use super::game::game_object::*;
 
+/// Result of playing a game, containing metrics for fitness evaluation
+#[derive(Debug, Clone)]
+pub struct GameResult {
+    pub points: usize,
+    pub steps_taken: usize,
+    pub max_steps: usize,
+}
+
+impl GameResult {
+    /// Calculate efficiency as points per step (higher is better)
+    pub fn efficiency(&self) -> f64 {
+        if self.steps_taken == 0 {
+            0.0
+        } else {
+            self.points as f64 / self.steps_taken as f64
+        }
+    }
+
+    /// Check if the game was won (all points collected before max steps)
+    pub fn is_win(&self) -> bool {
+        self.steps_taken < self.max_steps && self.points > 0
+    }
+}
+
+/// Play a game with the given network and return detailed results
 pub fn play_game_with_network(
     smart_network: &mut SmartNetwork,
     initial_level: Level,
     visibility_distance: usize,
-    is_game_logged: bool
-) -> usize {
+    is_game_logged: bool,
+) -> GameResult {
+    let max_steps = initial_level.max_steps;
     let mut current_game_state = GameState::from_initial_level(initial_level);
+    let mut steps_taken = 0;
 
     loop {
         match current_game_state.borrow() {
-            in_progress @ GameState::InProgress(_, _, _) => {
+            in_progress @ GameState::InProgress(_, current_step, _) => {
+                steps_taken = *current_step;
                 let state_bit_vector =
-                    game_state_to_bit_vector(&in_progress, visibility_distance).unwrap();
+                    game_state_to_bit_vector(in_progress, visibility_distance).unwrap();
                 let smart_network_output =
                     smart_network.compute_output(state_bit_vector.as_slice());
                 let smart_network_output_as_action =
@@ -37,14 +65,18 @@ pub fn play_game_with_network(
                 }
             }
             Finished(final_points) => {
-                return *final_points;
+                return GameResult {
+                    points: *final_points,
+                    steps_taken,
+                    max_steps,
+                };
             }
         }
     }
 }
 
-fn game_action_from_bit_vector(bit_vector: &Vec<bool>) -> Option<GameAction> {
-    match bit_vector.as_slice() {
+fn game_action_from_bit_vector(bit_vector: &[bool]) -> Option<GameAction> {
+    match bit_vector {
         [false, false] => Some(MoveUp),
         [false, true] => Some(MoveDown),
         [true, false] => Some(MoveRight),
@@ -158,7 +190,21 @@ mod smart_network_game_adapter_tests {
 
         let result = play_game_with_network(&mut smart_network, level, 2, false);
 
-        assert_eq!(result, 3);
+        assert_eq!(result.points, 3);
+    }
+
+    #[test]
+    fn game_result_efficiency_test() {
+        setup();
+
+        let result = GameResult {
+            points: 100,
+            steps_taken: 10,
+            max_steps: 30,
+        };
+
+        assert_eq!(result.efficiency(), 10.0);
+        assert!(result.is_win());
     }
 
     #[test]

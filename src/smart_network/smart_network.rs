@@ -3,12 +3,12 @@ use std::time::Instant;
 use log::{debug, trace};
 
 use super::network::*;
+use crate::common::get_required_bits_count;
 
 /// Bounded memory storage for the smart network.
 /// Uses a fixed-size array indexed by address bits converted to usize.
 pub struct SmartNetworkMemory {
     data: Vec<Vec<bool>>,
-    data_width: usize,
 }
 
 impl SmartNetworkMemory {
@@ -16,7 +16,6 @@ impl SmartNetworkMemory {
         let size = 1 << addr_bits; // 2^addr_bits entries
         SmartNetworkMemory {
             data: vec![vec![false; data_width]; size],
-            data_width,
         }
     }
 
@@ -49,6 +48,51 @@ pub struct SmartNetwork {
 }
 
 impl SmartNetwork {
+    /// Create a SmartNetwork directly from a bit slice (more efficient than string parsing)
+    pub fn from_bits(
+        bits: &[bool],
+        input_count: usize,
+        output_count: usize,
+        nand_count_bits: usize,
+        memory_addr_bits: usize,
+        memory_rw_bits: usize,
+    ) -> SmartNetwork {
+        let total_input_count = input_count + memory_rw_bits;
+        let total_output_count = output_count + (2 * memory_addr_bits) + memory_rw_bits;
+
+        let from_bits_start = Instant::now();
+        let mut network =
+            Network::from_bits(bits, total_input_count, total_output_count, nand_count_bits)
+                .unwrap();
+        trace!("from_bits_elapsed={:?}", from_bits_start.elapsed());
+
+        let clean_connections_start = Instant::now();
+        network.clean_connections();
+        trace!(
+            "clean_connections_elapsed={:?}",
+            clean_connections_start.elapsed()
+        );
+
+        let get_outputs_computation_fn_start = Instant::now();
+        let output_fn = Box::new(Network::get_outputs_computation_fn(
+            total_output_count,
+            &network.connections,
+        ));
+        trace!(
+            "get_outputs_computation_fn_elapsed={:?}",
+            get_outputs_computation_fn_start.elapsed()
+        );
+
+        SmartNetwork {
+            network,
+            memory_addr_input_count: memory_addr_bits,
+            memory_rw_input_count: memory_rw_bits,
+            get_network_output_fn: output_fn,
+            memory: SmartNetworkMemory::new(memory_addr_bits, memory_rw_bits),
+            current_memory_output: vec![false; memory_rw_bits],
+        }
+    }
+
     pub fn from_bitstring(
         s: &str,
         input_count: usize,

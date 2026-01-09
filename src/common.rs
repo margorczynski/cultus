@@ -56,6 +56,11 @@ pub fn vec_bool_to_bitvec(v: &[bool]) -> BitVec<u64, Lsb0> {
     v.iter().collect()
 }
 
+/// Calculate the number of bits required to represent a number
+pub fn get_required_bits_count(num: usize) -> usize {
+    (num as f32).log2().ceil() as usize
+}
+
 #[cfg(test)]
 mod common_tests {
     use super::*;

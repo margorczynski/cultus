@@ -4,6 +4,7 @@ use std::time::Instant;
 use log::{debug, trace};
 
 use super::connection::*;
+use crate::common::get_required_bits_count;
 
 #[derive(PartialEq, Debug, Clone)]
 pub struct Network {
@@ -159,9 +160,83 @@ impl Network {
         })
     }
 
+    /// Create a logic gate network directly from a bit slice (more efficient than string parsing)
+    pub fn from_bits(
+        bits: &[bool],
+        input_count: usize,
+        output_count: usize,
+        nand_count_bits: usize,
+    ) -> Option<Network> {
+        if bits.len() <= nand_count_bits {
+            return None;
+        }
+
+        // Parse NAND count from first nand_count_bits bits
+        let nand_count: usize = bits[..nand_count_bits]
+            .iter()
+            .enumerate()
+            .filter(|(_, &b)| b)
+            .map(|(i, _)| 1 << i)
+            .sum();
+
+        let connection_index_bits_count = *[input_count, output_count, nand_count]
+            .map(|cnt| get_required_bits_count(cnt))
+            .iter()
+            .max()
+            .unwrap();
+        let connection_bits_count = 2 + (2 * connection_index_bits_count);
+
+        let connections_bits = &bits[nand_count_bits..];
+
+        let mut connections: HashSet<Connection> = HashSet::new();
+        let mut input_counts: HashMap<(OutputConnectionType, usize), usize> = HashMap::new();
+        let mut ind = 0;
+
+        while ind + connection_bits_count <= connections_bits.len() {
+            if let Some(connection) = Connection::from_bits(
+                &connections_bits[ind..],
+                input_count,
+                output_count,
+                nand_count,
+                connection_index_bits_count,
+            ) {
+                let output = connection.output;
+                let max_inputs_cnt = match output.0 {
+                    OutputConnectionType::Output => 1,
+                    OutputConnectionType::NAND => 2,
+                };
+
+                let current_count = input_counts.get(&output).copied().unwrap_or(0);
+                if current_count + 1 <= max_inputs_cnt {
+                    connections.insert(connection);
+                    input_counts.insert(output, current_count + 1);
+                }
+            }
+            ind += connection_bits_count;
+        }
+
+        // Remove gates with wrong input amounts
+        let outputs_with_wrong_input_amount: HashSet<(OutputConnectionType, usize)> = input_counts
+            .iter()
+            .filter(|(&(conn_type, _), &count)| match conn_type {
+                OutputConnectionType::Output => count != 1,
+                OutputConnectionType::NAND => count != 2,
+            })
+            .map(|(input, _)| *input)
+            .collect();
+
+        connections.retain(|conn| !outputs_with_wrong_input_amount.contains(&conn.output));
+
+        Some(Network {
+            input_count,
+            output_count,
+            connections,
+        })
+    }
+
     /// Clean up the network connections
-    /// 1. Remove connections which create a cycle
-    /// 2. Remove connections which are not computable (no path from input to output going through it, gate hasn't got 2 inputs and 1 output)
+    /// Removes connections which are not computable (gates without 2 inputs and 1 output).
+    /// Note: Cycles are prevented by construction (input_idx < output_idx constraint).
     pub fn clean_connections(&mut self) {
         debug!(
             "Cleaning up connections. Starting count: {}",
@@ -170,25 +245,6 @@ impl Network {
 
         let mut cleaned_up_connections: HashSet<Connection> = self.connections.clone();
 
-        //Now we require that input_idx < output_idx so that making cycling connections should be impossible (they only go "forward")
-/*        let get_cycles_start = Instant::now();
-        //Go through all the input connections and for each get the connections which cycle when exploring starting from that input
-        let cycle_connections = cleaned_up_connections
-            .iter()
-            .filter(|&conn| conn.input.0 == InputConnectionType::Input)
-            .map(|input_conn| Network::get_cycles(input_conn, &cleaned_up_connections))
-            .reduce(|acc, e| acc.union(&e).copied().collect())
-            .unwrap();
-        info!("get_cycles_elapsed={:?}", get_cycles_start.elapsed());
-
-        let remove_cycles_start = Instant::now();
-        //Remove the cycling connections
-        cleaned_up_connections = cleaned_up_connections
-            .difference(&cycle_connections)
-            .cloned()
-            .collect();
-        info!("remove_cycles_elapsed={:?}", remove_cycles_start.elapsed());
-*/
         let remove_incorrect_start = Instant::now();
         //Remove connections of gates where the number of inputs or outputs is incorrect
         //This is done in an iterative manner until there are no more connections to remove
@@ -347,6 +403,7 @@ impl Network {
         gates_with_connections
     }
 
+    #[allow(dead_code)]
     fn get_cycles(
         start_connection: &Connection,
         connections: &HashSet<Connection>,
@@ -378,11 +435,6 @@ impl Network {
 
         cycles
     }
-}
-
-//TODO: Move to common
-pub fn get_required_bits_count(num: usize) -> usize {
-    (num as f32).log2().ceil() as usize
 }
 
 #[cfg(test)]
