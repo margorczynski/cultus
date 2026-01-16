@@ -6,7 +6,89 @@ pub struct Connection {
     pub output: (OutputConnectionType, usize),
 }
 
+/// Convert a slice of bools to usize (little-endian bit order)
+fn bits_to_usize(bits: &[bool]) -> usize {
+    bits.iter()
+        .enumerate()
+        .filter(|(_, &b)| b)
+        .map(|(i, _)| 1 << i)
+        .sum()
+}
+
 impl Connection {
+    /// Create a connection from a bit slice (more efficient than string parsing)
+    pub fn from_bits(
+        bits: &[bool],
+        input_count: usize,
+        output_count: usize,
+        nand_count: usize,
+        index_bits_count: usize,
+    ) -> Option<Connection> {
+        let total_bits = 2 + (2 * index_bits_count);
+
+        if bits.len() < total_bits {
+            return None;
+        }
+
+        // Decode type of input and output
+        let input_type = if bits[0] {
+            InputConnectionType::NAND
+        } else {
+            InputConnectionType::Input
+        };
+
+        let output_type = if bits[1] {
+            OutputConnectionType::NAND
+        } else {
+            OutputConnectionType::Output
+        };
+
+        // Decode the indexes for the input and output
+        let input_index = bits_to_usize(&bits[2..index_bits_count + 2]);
+        let output_index = bits_to_usize(&bits[index_bits_count + 2..2 * index_bits_count + 2]);
+
+        // Validate indexes
+        match input_type {
+            InputConnectionType::Input => {
+                if input_index >= input_count {
+                    return None;
+                }
+            }
+            InputConnectionType::NAND => {
+                if input_index >= nand_count {
+                    return None;
+                }
+            }
+        };
+
+        match output_type {
+            OutputConnectionType::Output => {
+                if output_index >= output_count {
+                    return None;
+                }
+            }
+            OutputConnectionType::NAND => {
+                if output_index >= nand_count {
+                    return None;
+                }
+            }
+        };
+
+        // Prevent cycles: NAND -> NAND only if input_index < output_index
+        if let InputConnectionType::NAND = input_type {
+            if let OutputConnectionType::NAND = output_type {
+                if input_index >= output_index {
+                    return None;
+                }
+            }
+        }
+
+        Some(Connection {
+            input: (input_type, input_index),
+            output: (output_type, output_index),
+        })
+    }
+
     pub fn from_bitstring(
         s: &str,
         input_count: usize,
@@ -14,9 +96,6 @@ impl Connection {
         nand_count: usize,
         index_bits_count: usize,
     ) -> Option<Connection> {
-
-        //TODO: Try to load the whole thing into memory and directly map it onto a struct?
-
         if s.chars().count() < 3 {
             return None;
         }
@@ -30,7 +109,7 @@ impl Connection {
             1 => InputConnectionType::NAND,
             _ => {
                 panic!("Non 0/1 value for output type")
-            },
+            }
         };
 
         let output_type_binary = &s[1..2];
@@ -41,7 +120,7 @@ impl Connection {
             1 => OutputConnectionType::NAND,
             _ => {
                 panic!("Non 0/1 value for output type")
-            },
+            }
         };
 
         let total_bits = 2 + (2 * index_bits_count);
@@ -85,16 +164,14 @@ impl Connection {
 
         match input_type {
             InputConnectionType::Input => {}
-            InputConnectionType::NAND => {
-                match output_type {
-                    OutputConnectionType::Output => {}
-                    OutputConnectionType::NAND => {
-                        if input_index >= output_index {
-                            return None;
-                        }
+            InputConnectionType::NAND => match output_type {
+                OutputConnectionType::Output => {}
+                OutputConnectionType::NAND => {
+                    if input_index >= output_index {
+                        return None;
                     }
                 }
-            }
+            },
         }
 
         Some(Connection {
